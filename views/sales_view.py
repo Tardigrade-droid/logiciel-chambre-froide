@@ -316,12 +316,21 @@ class SalesView(QWidget):
             return
         
         # Ajouter au panier
-        self.cart_items.append({
-            'product_id': product_id,
-            'nom': product['nom_pr'],
-            'price': product['prix_carton'],
-            'quantity': quantity
-        })
+        # Chercher si le produit existe déjà dans le panier
+        found = False
+        for item in self.cart_items:
+            if item['product_id'] == product_id:
+                # Augmenter la quantité
+                item['quantity'] += quantity
+                found = True
+                break
+        if not found:
+            self.cart_items.append({
+                'product_id': product_id,
+                'nom': product['nom_pr'],
+                'price': product['prix_carton'],
+                'quantity': quantity
+            })
         
         self.update_cart_display()
         self.quantity_spinbox.setValue(1)
