@@ -3,11 +3,10 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QF
                              QTableWidget, QTableWidgetItem, QSpinBox, QDateEdit, QDialog,
                              QRadioButton, QButtonGroup, QGroupBox, QTextEdit)
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtCore import QDate
 from datetime import datetime
 from database import (get_all_products, get_all_payment_modes, create_sale, get_sales_by_vendor_id, get_sale_by_id, 
                       is_manager, create_debt, is_credit_payment,
-                      get_clients_by_phone, create_client_direct)
+                      get_clients_by_phone, create_client_direct, update_sale, get_all_users, get_all_sales_detailed)
 from invoice_generator import generate_invoice, open_invoice
 from utils import format_currency
 
@@ -358,6 +357,12 @@ class SalesView(QWidget):
         
         # Onglet 3 : Historique ventes (si manager)
         if is_manager(self.user['id_ut']):
+            # Toutes les ventes (manager)
+            self.tab_all_sales = QWidget()
+            self.setup_all_sales_tab()
+            self.tabs.addTab(self.tab_all_sales, "📈 Toutes les Ventes")
+            
+            # Modifier une vente (manager)
             self.tab_modify_sales = QWidget()
             self.setup_modify_sales_tab()
             self.tabs.addTab(self.tab_modify_sales, "✏️ Modifier Une Vente")
@@ -367,6 +372,8 @@ class SalesView(QWidget):
         
         # Charger les données
         self.refresh_daily_sales()
+        if is_manager(self.user['id_ut']):
+            self.refresh_all_sales()
 
     def setup_new_sale_tab(self):
         """Onglet pour créer une nouvelle vente"""
@@ -508,28 +515,222 @@ class SalesView(QWidget):
         
         self.tab_daily_sales.setLayout(layout)
 
+    def setup_all_sales_tab(self):
+        """Onglet pour afficher toutes les ventes avec filtres (manager)"""
+        layout = QVBoxLayout()
+        
+        # Titre
+        title = QLabel("Toutes les Ventes")
+        title.setStyleSheet("font-size: 14px; font-weight: bold;")
+        layout.addWidget(title)
+        
+        # Filtres
+        filters_layout = QHBoxLayout()
+        
+        # Filtre vendeur/utilisateur
+        filters_layout.addWidget(QLabel("Vendeur :"))
+        self.filter_vendor = QComboBox()
+        self.filter_vendor.addItem("TOUS", None)
+        self.refresh_vendor_combo()
+        self.filter_vendor.currentIndexChanged.connect(self.refresh_all_sales)
+        filters_layout.addWidget(self.filter_vendor)
+        
+        # Filtre date début
+        filters_layout.addWidget(QLabel("Du :"))
+        self.filter_start_date = QDateEdit()
+        self.filter_start_date.setDate(QDate.currentDate().addDays(-30))
+        self.filter_start_date.dateChanged.connect(self.refresh_all_sales)
+        filters_layout.addWidget(self.filter_start_date)
+        
+        # Filtre date fin
+        filters_layout.addWidget(QLabel("Au :"))
+        self.filter_end_date = QDateEdit()
+        self.filter_end_date.setDate(QDate.currentDate())
+        self.filter_end_date.dateChanged.connect(self.refresh_all_sales)
+        filters_layout.addWidget(self.filter_end_date)
+        
+        # Bouton actualiser
+        btn_refresh = QPushButton("🔄 Actualiser")
+        btn_refresh.clicked.connect(self.refresh_all_sales)
+        filters_layout.addWidget(btn_refresh)
+        
+        filters_layout.addStretch()
+        layout.addLayout(filters_layout)
+        layout.addSpacing(10)
+        
+        # Tableau des ventes
+        self.table_all_sales = QTableWidget()
+        self.table_all_sales.setColumnCount(8)
+        self.table_all_sales.setHorizontalHeaderLabels([
+            "ID Vente", "Date", "Vendeur", "Client", "Mode Paiement", "Montant", "Détails", "Modifier"
+        ])
+        self.table_all_sales.setColumnWidth(0, 80)
+        self.table_all_sales.setColumnWidth(1, 120)
+        self.table_all_sales.setColumnWidth(2, 150)
+        self.table_all_sales.setColumnWidth(3, 200)
+        self.table_all_sales.setColumnWidth(4, 120)
+        self.table_all_sales.setColumnWidth(5, 120)
+        self.table_all_sales.setColumnWidth(6, 120)
+        self.table_all_sales.setColumnWidth(7, 120)
+        
+        layout.addWidget(self.table_all_sales)
+        
+        self.tab_all_sales.setLayout(layout)
+    
+    def refresh_vendor_combo(self):
+        """Remplit le combo vendeur avec tous les utilisateurs"""
+        users = get_all_users()
+        for user in users:
+            nom_complet = f"{user['prenom_ut']} {user['nom_ut']}"
+            self.filter_vendor.addItem(nom_complet, user['id_ut'])
+    
+    def refresh_all_sales(self):
+        """Actualise le tableau de toutes les ventes avec filtres"""
+        all_sales = get_all_sales_detailed()
+        
+        # Appliquer les filtres
+        vendor_id = self.filter_vendor.currentData()
+        start_date = self.filter_start_date.date()
+        end_date = self.filter_end_date.date()
+        
+        filtered_sales = []
+        for sale in all_sales:
+            # Filtre vendeur
+            if vendor_id is not None and sale.get('id_ut') != vendor_id:
+                continue
+            
+            # Filtre date
+            sale_date = QDate.fromString(str(sale['date_vente']), "yyyy-MM-dd")
+            if not (start_date <= sale_date <= end_date):
+                continue
+            
+            filtered_sales.append(sale)
+        
+        # Remplir le tableau
+        self.table_all_sales.setRowCount(len(filtered_sales))
+        
+        for row, sale in enumerate(filtered_sales):
+            self.table_all_sales.setItem(row, 0, QTableWidgetItem(str(sale['id_vente'])))
+            self.table_all_sales.setItem(row, 1, QTableWidgetItem(str(sale['date_vente'])))
+            self.table_all_sales.setItem(row, 2, QTableWidgetItem(sale.get('vendeur', 'N/A')))
+            self.table_all_sales.setItem(row, 3, QTableWidgetItem(sale.get('client', 'N/A')))
+            self.table_all_sales.setItem(row, 4, QTableWidgetItem(sale.get('mode_paiement', 'N/A')))
+            
+            montant = sale['montant_total'] or 0
+            self.table_all_sales.setItem(row, 5, QTableWidgetItem(format_currency(montant)))
+            
+            # Bouttons d'action
+            # Bouton voir les détails
+            btn_details = QPushButton("👁️ Voir")
+            btn_details.setStyleSheet("background-color: #9b59b6; color: white;")
+            btn_details.clicked.connect(lambda checked, sid=sale['id_vente']: self.show_sale_details(sid))
+            self.table_all_sales.setCellWidget(row, 6, btn_details)
+            
+            # Bouton modifier
+            btn_modify = QPushButton("✏️ Modifier")
+            btn_modify.setStyleSheet("background-color: #3498db; color: white;")
+            btn_modify.clicked.connect(lambda checked, sid=sale['id_vente']: self.load_sale_to_edit_from_all_sales(sid))
+            self.table_all_sales.setCellWidget(row, 7, btn_modify)
+
+    def load_sale_to_edit_from_all_sales(self, sale_id):
+        """Charge une vente depuis l'onglet toutes les ventes et navigue vers l'onglet modification"""
+        # Remplir le champ ID dans l'onglet modification
+        self.sale_id_input.setText(str(sale_id))
+        
+        # Charger la vente
+        self.load_sale_for_edit()
+        
+        # Changer vers l'onglet modification
+        self.tabs.setCurrentWidget(self.tab_modify_sales)
+
     def setup_modify_sales_tab(self):
         """Onglet pour modifier une vente (manager)"""
         layout = QVBoxLayout()
         
-        layout.addWidget(QLabel("Modifier une vente (Manager uniquement)"))
+        # Titre
+        title = QLabel("Modifier une Vente (Manager)")
+        title.setStyleSheet("font-size: 14px; font-weight: bold;")
+        layout.addWidget(title)
         
+        # Recherche de vente
         search_layout = QHBoxLayout()
         search_layout.addWidget(QLabel("ID Vente :"))
         self.sale_id_input = QLineEdit()
         search_layout.addWidget(self.sale_id_input)
         
         btn_search = QPushButton("Charger")
+        btn_search.setStyleSheet("background-color: #3498db; color: white; font-weight: bold;")
         btn_search.clicked.connect(self.load_sale_for_edit)
         search_layout.addWidget(btn_search)
+        search_layout.addStretch()
         
         layout.addLayout(search_layout)
+        layout.addSpacing(15)
         
-        # Affichage de la vente
-        self.modify_layout = QFormLayout()
-        layout.addLayout(self.modify_layout)
+        # Affichage de la vente avec deux sections : infos et modification
+        self.sale_edit_container = QVBoxLayout()
         
+        # Section infos (non-éditable)
+        self.info_group = QGroupBox("Informations de la Vente")
+        self.info_group.setStyleSheet("""QGroupBox {
+            font-weight: bold;
+            border: 2px solid #95a5a6;
+            border-radius: 5px;
+            margin-top: 1ex;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 10px 0 10px;
+        }""")
+        self.info_layout = QFormLayout()
+        self.info_group.setLayout(self.info_layout)
+        self.sale_edit_container.addWidget(self.info_group)
+        
+        # Section modification
+        self.edit_group = QGroupBox("Éditer la Vente")
+        self.edit_group.setStyleSheet("""QGroupBox {
+            font-weight: bold;
+            border: 2px solid #3498db;
+            border-radius: 5px;
+            margin-top: 1ex;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 10px 0 10px;
+        }""")
+        self.edit_form_layout = QFormLayout()
+        self.edit_group.setLayout(self.edit_form_layout)
+        self.sale_edit_container.addWidget(self.edit_group)
+        
+        layout.addLayout(self.sale_edit_container)
+        layout.addSpacing(10)
+        
+        # Boutons d'action
+        buttons_layout = QHBoxLayout()
+        
+        self.btn_save = QPushButton("✓ Enregistrer les modifications")
+        self.btn_save.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 10px;")
+        self.btn_save.clicked.connect(self.save_sale_modifications)
+        buttons_layout.addWidget(self.btn_save)
+        
+        self.btn_cancel = QPushButton("✗ Annuler")
+        self.btn_cancel.setStyleSheet("background-color: #e74c3c; color: white; font-weight: bold; padding: 10px;")
+        self.btn_cancel.clicked.connect(self.clear_sale_edit)
+        buttons_layout.addWidget(self.btn_cancel)
+        
+        buttons_layout.addStretch()
+        layout.addLayout(buttons_layout)
+        
+        layout.addStretch()
         self.tab_modify_sales.setLayout(layout)
+        
+        # Masquer les boutons et groupes au départ
+        self.info_group.hide()
+        self.edit_group.hide()
+        self.btn_save.hide()
+        self.btn_cancel.hide()
 
     def refresh_product_combo(self):
         """Met à jour la liste des produits"""
@@ -795,17 +996,144 @@ class SalesView(QWidget):
 
     def load_sale_for_edit(self):
         """Charge une vente pour édition (manager)"""
-        sale_id = self.sale_id_input.text()
-        if not sale_id:
+        sale_id_text = self.sale_id_input.text().strip()
+        if not sale_id_text:
             QMessageBox.warning(self, "Erreur", "Veuillez entrer un ID de vente")
             return
         
-        sale = get_sale_by_id(int(sale_id))
-        if not sale:
-            QMessageBox.warning(self, "Erreur", "Vente non trouvée")
+        try:
+            sale_id = int(sale_id_text)
+        except ValueError:
+            QMessageBox.warning(self, "Erreur", "L'ID de vente doit être un nombre")
             return
         
-        # Afficher les détails en formulaire
-        # (À améliorer avec possibilité de modification)
-        msg = f"ID Vente: {sale['id_vente']}\nClient: {sale['client']}\nMontant: {format_currency(sum(a['prix_vente'] * a['quantite'] for a in sale['articles']))}"
-        QMessageBox.information(self, "Vente chargée", msg)
+        sale = get_sale_by_id(sale_id)
+        if not sale:
+            QMessageBox.warning(self, "Erreur", f"Vente #{sale_id} non trouvée")
+            return
+        
+        # Stocker la vente actuelle
+        self.current_sale_edit = sale
+        
+        # Nettoyer les layouts précédents
+        while self.info_layout.count():
+            widget = self.info_layout.takeAt(0).widget()
+            if widget:
+                widget.deleteLater()
+        
+        while self.edit_form_layout.count():
+            widget = self.edit_form_layout.takeAt(0).widget()
+            if widget:
+                widget.deleteLater()
+        
+        # Remplir la section informations
+        id_label = QLabel(f"#{sale['id_vente']}")
+        id_label.setStyleSheet("font-weight: bold; color: #e74c3c;")
+        self.info_layout.addRow("ID Vente :", id_label)
+        
+        self.info_layout.addRow("Date :", QLabel(str(sale['date_vente'])))
+        self.info_layout.addRow("Client :", QLabel(sale['client'] or "N/A"))
+        self.info_layout.addRow("Vendeur :", QLabel(sale['vendeur'] or "N/A"))
+        
+        # Montant total
+        total = sum(a['prix_vente'] * a['quantite'] for a in sale['articles'])
+        montant_label = QLabel(format_currency(total))
+        montant_label.setStyleSheet("font-weight: bold; color: #27ae60;")
+        self.info_layout.addRow("Montant Total :", montant_label)
+        
+        # Nombre d'articles
+        nb_articles = len(sale['articles'])
+        self.info_layout.addRow("Nombre d'articles :", QLabel(str(nb_articles)))
+        
+        # Section édition
+        # Mode de paiement
+        self.edit_payment_mode = QComboBox()
+        self.refresh_payment_modes()  # Remplir les modes
+        # Sélectionner le mode actuel
+        for i in range(self.edit_payment_mode.count()):
+            if self.edit_payment_mode.itemData(i) == sale['id_mode']:
+                self.edit_payment_mode.setCurrentIndex(i)
+                break
+        self.edit_form_layout.addRow("Mode de Paiement :", self.edit_payment_mode)
+        
+        # Statut retrait
+        self.edit_retrait_status = QComboBox()
+        self.edit_retrait_status.addItems(["IMMEDIAT", "ULTERIEUR"])
+        self.edit_retrait_status.setCurrentText(sale['statut_retrait'] or "IMMEDIAT")
+        self.edit_retrait_status.currentTextChanged.connect(self.on_edit_retrait_changed)
+        self.edit_form_layout.addRow("Statut Retrait :", self.edit_retrait_status)
+        
+        # Date de retrait
+        self.edit_date_retrait = QDateEdit()
+        if sale['date_retrait_effective']:
+            self.edit_date_retrait.setDate(QDate.fromString(str(sale['date_retrait_effective']), "yyyy-MM-dd"))
+        else:
+            self.edit_date_retrait.setDate(QDate.currentDate())
+        
+        # Activer la date si retrait ultérieur
+        self.edit_date_retrait.setEnabled(sale['statut_retrait'] == "ULTERIEUR")
+        self.edit_form_layout.addRow("Date Retrait :", self.edit_date_retrait)
+        
+        # Afficher les groupes et boutons
+        self.info_group.show()
+        self.edit_group.show()
+        self.btn_save.show()
+        self.btn_cancel.show()
+        
+        QMessageBox.information(self, "Succès", f"Vente #{sale_id} chargée. Vous pouvez maintenant la modifier.")
+    
+    def on_edit_retrait_changed(self):
+        """Active/désactive la date de retrait selon le statut"""
+        self.edit_date_retrait.setEnabled(self.edit_retrait_status.currentText() == "ULTERIEUR")
+    
+    def save_sale_modifications(self):
+        """Sauvegarde les modifications de la vente"""
+        if not hasattr(self, 'current_sale_edit'):
+            QMessageBox.warning(self, "Erreur", "Aucune vente chargée")
+            return
+        
+        sale_id = self.current_sale_edit['id_vente']
+        payment_mode_id = self.edit_payment_mode.currentData()
+        retrait_status = self.edit_retrait_status.currentText()
+        date_retrait = None
+        
+        if retrait_status == "ULTERIEUR":
+            date_retrait = self.edit_date_retrait.date().toString("yyyy-MM-dd")
+        
+        # Appeler la fonction update_sale de la base de données
+        if update_sale(
+            sale_id,
+            payment_mode_id=payment_mode_id,
+            statut_retrait=retrait_status,
+            date_retrait=date_retrait
+        ):
+            QMessageBox.information(
+                self,
+                "Succès",
+                f"Vente #{sale_id} modifiée avec succès !\n\n"
+                f"Mode de paiement : {self.edit_payment_mode.currentText()}\n"
+                f"Statut retrait : {retrait_status}\n"
+                f"Date retrait : {date_retrait or 'N/A'}"
+            )
+            self.clear_sale_edit()
+        else:
+            QMessageBox.critical(self, "Erreur", "Erreur lors de la mise à jour de la vente")
+    
+    def clear_sale_edit(self):
+        """Réinitialise le formulaire d'édition"""
+        self.sale_id_input.clear()
+        self.info_group.hide()
+        self.edit_group.hide()
+        self.btn_save.hide()
+        self.btn_cancel.hide()
+        
+        # Nettoyer les layouts
+        while self.info_layout.count():
+            widget = self.info_layout.takeAt(0).widget()
+            if widget:
+                widget.deleteLater()
+        
+        while self.edit_form_layout.count():
+            widget = self.edit_form_layout.takeAt(0).widget()
+            if widget:
+                widget.deleteLater()
