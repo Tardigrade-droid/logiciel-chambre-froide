@@ -100,12 +100,15 @@ def generate_invoice(sale_data, output_filename="facture.pdf"):
     # Ajouter la ligne de total
     table_data.append(['', '', 'TOTAL GENERAL:', format_currency(total_amount)])
     
-    articles_table = Table(table_data, colWidths=[2.5*inch, 1.5*inch, 1.2*inch, 1.3*inch])
+    # élargir un peu les colonnes pour éviter débordements
+    # colonnes encore plus larges pour éviter débordements sur le total
+    articles_table = Table(table_data, colWidths=[3.25*inch, 1.5*inch, 1.8*inch, 1.5*inch])
     
     articles_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.blue),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (1, 1), (-2, -2), 'CENTER'),  # centrer colonnes numériques
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),    # produits alignés à gauche
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 11),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
@@ -113,6 +116,7 @@ def generate_invoice(sale_data, output_filename="facture.pdf"):
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, -1), (-1, -1), 11),
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('WORDWRAP', (0, 0), (-1, -1), 'ON'),
     ]))
     
     elements.append(articles_table)
@@ -134,12 +138,19 @@ def generate_invoice(sale_data, output_filename="facture.pdf"):
     if montant_restant is not None:
         payment_data.append(['MONTANT RESTANT A PAYER:', format_currency(montant_restant)])
     
-    payment_table = Table(payment_data, colWidths=[2*inch, 4*inch])
+    # si facturation d'un paiement partiel, afficher montant de ce versement
+    paiement_courant = sale_data.get('paiement_courant')
+    if paiement_courant is not None:
+        payment_data.append(['MONTANT DU PAIEMENT:', format_currency(paiement_courant)])
+    
+    payment_table = Table(payment_data, colWidths=[3*inch, 4*inch])
     payment_table.setStyle(TableStyle([
         ('FONT', (0, 0), (-1, -1), 'Helvetica', 10),
         ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+        # autoriser le texte à se découper si besoin
+        ('WORDWRAP', (0, 0), (-1, -1), 'ON'),
     ]))
     elements.append(payment_table)
     elements.append(Spacer(1, 0.4*inch))

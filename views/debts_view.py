@@ -6,8 +6,11 @@ from PySide6.QtCore import Qt, QDate
 from database import (get_all_debts, update_debt_status, 
                       is_manager, get_debt_by_id,
                       get_remaining_amount_for_debt, record_payment,
-                      get_payments_for_debt, get_total_paid_for_debt)
+                      get_payments_for_debt, get_total_paid_for_debt, get_sale_by_id)
 from utils import format_currency
+from invoice_generator import generate_invoice, open_invoice
+from datetime import datetime
+import os
 
 
 class DebtsView(QWidget):
@@ -18,7 +21,7 @@ class DebtsView(QWidget):
         self.current_user = current_user
         
         self.setWindowTitle("Suivi des Dettes")
-        self.setGeometry(100, 100, 1200, 600)
+        self.setGeometry(100, 100, 1400, 900)
         self.setup_ui()
 
     def setup_ui(self):
@@ -86,19 +89,18 @@ class DebtsView(QWidget):
         
         # Tableau
         self.table_debtors = QTableWidget()
-        self.table_debtors.setColumnCount(9)
+        self.table_debtors.setColumnCount(8)
         self.table_debtors.setHorizontalHeaderLabels([
-            "Client", "Téléphone", "Type Dette", "Montant Initial", "Montant Restant", "Date Échéance", "Statut", "Jours Restants", "Action"
+            "Client", "Téléphone", "Montant Initial", "Montant Restant", "Date Échéance", "Statut", "Jours Restants", "Action"
         ])
         self.table_debtors.setColumnWidth(0, 200)
         self.table_debtors.setColumnWidth(1, 120)
-        self.table_debtors.setColumnWidth(2, 100)
+        self.table_debtors.setColumnWidth(2, 120)
         self.table_debtors.setColumnWidth(3, 120)
         self.table_debtors.setColumnWidth(4, 120)
-        self.table_debtors.setColumnWidth(5, 120)
-        self.table_debtors.setColumnWidth(6, 100)
-        self.table_debtors.setColumnWidth(7, 120)
-        self.table_debtors.setColumnWidth(8, 100)
+        self.table_debtors.setColumnWidth(5, 100)
+        self.table_debtors.setColumnWidth(6, 120)
+        self.table_debtors.setColumnWidth(7, 150)
         
         layout.addWidget(self.table_debtors)
         
@@ -198,7 +200,7 @@ class DebtsView(QWidget):
         self.table_payment_history.setColumnWidth(0, 150)
         self.table_payment_history.setColumnWidth(1, 150)
         self.table_payment_history.setColumnWidth(2, 150)
-        self.table_payment_history.setMaximumHeight(200)
+        self.table_payment_history.setMinimumHeight(100)
         
         payment_hist_layout.addWidget(self.table_payment_history)
         payment_hist_group.setLayout(payment_hist_layout)
@@ -259,35 +261,33 @@ class DebtsView(QWidget):
             self.table_debtors.setItem(row, 0, QTableWidgetItem(debt['client'] or "N/A"))
             # Téléphone
             self.table_debtors.setItem(row, 1, QTableWidgetItem(debt['tel_client'] or "N/A"))
-            # Type
-            self.table_debtors.setItem(row, 2, QTableWidgetItem(debt['type_dette']))
             # Montant initial
-            self.table_debtors.setItem(row, 3, QTableWidgetItem(format_currency(debt['montant_total_dette'])))
+            self.table_debtors.setItem(row, 2, QTableWidgetItem(format_currency(debt['montant_total_dette'])))
             # Montant restant
             remaining = get_remaining_amount_for_debt(debt['id_dette'])
-            self.table_debtors.setItem(row, 4, QTableWidgetItem(format_currency(remaining)))
+            self.table_debtors.setItem(row, 3, QTableWidgetItem(format_currency(remaining)))
             # Date échéance
-            self.table_debtors.setItem(row, 5, QTableWidgetItem(str(debt['date_echeance'])))
+            self.table_debtors.setItem(row, 4, QTableWidgetItem(str(debt['date_echeance'])))
             # Statut
             status_color = "green" if debt['statut_dette'] == "SOLDE" else "red"
             item = QTableWidgetItem(debt['statut_dette'])
             item.setForeground(Qt.green if debt['statut_dette'] == "SOLDE" else Qt.red)
-            self.table_debtors.setItem(row, 6, item)
+            self.table_debtors.setItem(row, 5, item)
             
             # Jours restants
             date_ech = QDate.fromString(str(debt['date_echeance']), "yyyy-MM-dd")
             days_left = today.daysTo(date_ech)
-            self.table_debtors.setItem(row, 7, QTableWidgetItem(f"{days_left} jours"))
+            self.table_debtors.setItem(row, 6, QTableWidgetItem(f"{days_left} jours"))
             
             # Bouton action
             if debt['statut_dette'] == "NON_SOLDE":
-                btn_action = QPushButton("Marquer Payée")
-                btn_action.clicked.connect(lambda checked, did=debt['id_dette']: self.mark_as_paid(did))
+                btn_action = QPushButton("💰 Verser Paiement")
+                btn_action.clicked.connect(lambda checked, did=debt['id_dette']: self.navigate_to_payment(did))
             else:
-                btn_action = QPushButton("Réactiver")
-                btn_action.clicked.connect(lambda checked, did=debt['id_dette']: self.reopen_debt(did))
+                btn_action = QPushButton("📋 Historique")
+                btn_action.clicked.connect(lambda checked, did=debt['id_dette']: self.show_payment_history(did))
             
-            self.table_debtors.setCellWidget(row, 8, btn_action)
+            self.table_debtors.setCellWidget(row, 7, btn_action)
 
     def refresh_manage_debts(self):
         """Actualise le tableau de gestion des dettes"""
@@ -326,6 +326,14 @@ class DebtsView(QWidget):
             
             self.table_manage_debts.setCellWidget(row, 6, action_widget)
 
+    def navigate_to_payment(self, debt_id):
+        """Navigate vers l'onglet de paiement avec la dette pré-chargée"""
+        # Charger la dette dans l'onglet de paiement
+        self.payment_debt_id.setText(str(debt_id))
+        self.load_debt_for_payment()
+        # Changer vers l'onglet de paiement (index 1)
+        self.tabs.setCurrentIndex(1)
+
     def mark_as_paid(self, debt_id):
         """Marque une dette comme payée"""
         if update_debt_status(debt_id, "SOLDE"):
@@ -336,13 +344,64 @@ class DebtsView(QWidget):
         else:
             QMessageBox.critical(self, "Erreur", "Erreur lors de la mise à jour")
 
-    def reopen_debt(self, debt_id):
-        """Réouvre une dette"""
-        if update_debt_status(debt_id, "NON_SOLDE"):
-            QMessageBox.information(self, "Succès", "Dette réouverte")
-            self.refresh_debtors()
-        else:
-            QMessageBox.critical(self, "Erreur", "Erreur lors de la mise à jour")
+    def show_payment_history(self, debt_id):
+        """Affiche l'historique des paiements d'une dette"""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem
+        
+        debt = get_debt_by_id(debt_id)
+        if not debt:
+            QMessageBox.warning(self, "Erreur", "Dette non trouvée")
+            return
+        
+        payments = get_payments_for_debt(debt_id)
+        
+        # Créer une boîte de dialogue
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Historique des Paiements - Dette #{debt_id}")
+        dialog.setGeometry(200, 200, 600, 400)
+        
+        layout = QVBoxLayout()
+        
+        # Informations de la dette
+        info_label = QLabel(f"Client: {debt['client']} | Montant Total: {format_currency(debt['montant_total_dette'])} | Statut: {debt['statut_dette']}")
+        info_label.setStyleSheet("font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(info_label)
+        
+        # Tableau des paiements
+        table = QTableWidget()
+        table.setColumnCount(3)
+        table.setHorizontalHeaderLabels(["Date", "Montant Payé", "Solde Restant Après"])
+        table.setColumnWidth(0, 150)
+        table.setColumnWidth(1, 150)
+        table.setColumnWidth(2, 200)
+        
+        # Calculer le solde restant progressif
+        running_remaining = float(debt['montant_total_dette'])
+        table.setRowCount(len(payments))
+        
+        for row, payment in enumerate(payments):
+            date_item = QTableWidgetItem(str(payment['date_pai']))
+            amount_item = QTableWidgetItem(format_currency(payment['montant_pai']))
+            
+            running_remaining -= float(payment['montant_pai'])
+            remaining_item = QTableWidgetItem(format_currency(running_remaining))
+            
+            table.setItem(row, 0, date_item)
+            table.setItem(row, 1, amount_item)
+            table.setItem(row, 2, remaining_item)
+        
+        layout.addWidget(table)
+        
+        # Total payé
+        total_paid = float(get_total_paid_for_debt(debt_id))
+        remaining = float(get_remaining_amount_for_debt(debt_id))
+        
+        summary_label = QLabel(f"Total payé: {format_currency(total_paid)} | Restant à payer: {format_currency(remaining)}")
+        summary_label.setStyleSheet("margin-top: 10px;")
+        layout.addWidget(summary_label)
+        
+        dialog.setLayout(layout)
+        dialog.exec()
 
     def edit_debt(self, debt_id):
         """Édite une dette (manager)"""
@@ -371,17 +430,15 @@ class DebtsView(QWidget):
             QMessageBox.warning(self, "Erreur", "Dette non trouvée")
             return
         
-        if debt['statut_dette'] == 'SOLDE':
-            QMessageBox.information(self, "Info", "Cette dette est déjà complètement payée")
-            return
-        
         # Nettoyer le layout précédent
         while self.payment_info_layout.count():
-            self.payment_info_layout.takeAt(0).widget().deleteLater()
+            widget = self.payment_info_layout.takeAt(0).widget()
+            if widget:
+                widget.deleteLater()
         
         # Afficher les infos
-        remaining = get_remaining_amount_for_debt(debt_id)
-        total_paid = get_total_paid_for_debt(debt_id)
+        remaining = float(get_remaining_amount_for_debt(debt_id))
+        total_paid = float(get_total_paid_for_debt(debt_id))
         
         info_labels = [
             ("Client :", f"{debt['client']}"),
@@ -395,23 +452,34 @@ class DebtsView(QWidget):
             self.payment_info_layout.addRow(QLabel(label), QLabel(value))
         
         # Mise à jour de la progression
-        total = debt['montant_total_dette']
+        total = float(debt['montant_total_dette'])
         self.label_total_debt.setText(f"Montant total : {format_currency(total)}")
         self.label_paid.setText(f"Montant payé : {format_currency(total_paid)}")
         self.label_remaining.setText(f"Montant restant : {format_currency(remaining)}")
         
         # Calculer le pourcentage
         if total > 0:
-            percentage = int((total_paid / total) * 100)
+            percentage = int((float(total_paid) / float(total)) * 100)
             self.payment_progress.setValue(percentage)
         else:
             self.payment_progress.setValue(0)
         
-        # Remplir montant avec le montant restant
-        self.payment_amount.setValue(remaining)
+        # Remplir montant avec le montant restant - convertir en float
+        self.payment_amount.setValue(float(remaining))
         
         # Charger l'historique des paiements
         self.load_payment_history(debt_id, remaining)
+        
+        # Afficher un message si dette est complètement payée
+        if debt['statut_dette'] == 'SOLDE':
+            self.payment_amount.setEnabled(False)
+            info_msg = QMessageBox()
+            info_msg.setWindowTitle("Paiement Complet")
+            info_msg.setText("Cette dette est maintenant complètement payée ✓")
+            info_msg.setStandardButtons(QMessageBox.Ok)
+            info_msg.exec()
+        else:
+            self.payment_amount.setEnabled(True)
         
         self.current_debt_id = debt_id
         self.current_vente_id = debt['id_vente']
@@ -420,54 +488,141 @@ class DebtsView(QWidget):
         """Charge l'historique des paiements pour une dette"""
         payments = get_payments_for_debt(debt_id)
         
+        debt = get_debt_by_id(debt_id)
+        if not debt:
+            return
+            
+        # Pour afficher le solde restant à chaque étape, on commence par le montant total
+        # et on soustrait les paiements au fur et à mesure
+        # Convertir en float pour éviter problèmes de type Decimal
+        running_remaining = float(debt['montant_total_dette'])
+        
         self.table_payment_history.setRowCount(len(payments))
         
         for row, payment in enumerate(payments):
             date = QTableWidgetItem(str(payment['date_pai']))
             amount = QTableWidgetItem(format_currency(payment['montant_pai']))
-            current_remaining += payment['montant_pai']  # Recalculate remaining backwards
+            # Soustraire le paiement du total pour obtenir le solde restant après ce paiement
+            # Convertir montant_pai en float
+            running_remaining -= float(payment['montant_pai'])
             
             self.table_payment_history.setItem(row, 0, date)
             self.table_payment_history.setItem(row, 1, amount)
-            self.table_payment_history.setItem(row, 2, QTableWidgetItem(format_currency(current_remaining)))
+            self.table_payment_history.setItem(row, 2, QTableWidgetItem(format_currency(running_remaining)))
 
     def record_debt_payment(self):
         """Enregistre un paiement pour une dette"""
-        if not hasattr(self, 'current_debt_id'):
-            QMessageBox.warning(self, "Erreur", "Veuillez d'abord charger une dette")
-            return
-        
-        montant = self.payment_amount.value()
-        
-        if montant <= 0:
-            QMessageBox.warning(self, "Erreur", "Le montant doit être supérieur à 0")
-            return
-        
-        # Vérifier que le montant ne dépasse pas le montant restant
-        remaining = get_remaining_amount_for_debt(self.current_debt_id)
-        if montant > remaining:
-            reply = QMessageBox.question(
-                self,
-                "Montant supérieur",
-                f"Le montant restant à payer est {format_currency(remaining)}.\nVoulez-vous quand même enregistrer {format_currency(montant)} ?",
-                QMessageBox.Yes | QMessageBox.No
-            )
-            if reply == QMessageBox.No:
+        try:
+            print("\n=== DEBUT ENREGISTREMENT PAIEMENT ===")
+            
+            if not hasattr(self, 'current_debt_id'):
+                QMessageBox.warning(self, "Erreur", "Veuillez d'abord charger une dette")
                 return
+            
+            print(f"Debt ID: {self.current_debt_id}, Vente ID: {self.current_vente_id}")
+            
+            montant = self.payment_amount.value()
+            print(f"Montant à payer: {montant}")
+            
+            if montant <= 0:
+                QMessageBox.warning(self, "Erreur", "Le montant doit être supérieur à 0")
+                return
+            
+            # Vérifier que le montant ne dépasse pas le montant restant
+            remaining = float(get_remaining_amount_for_debt(self.current_debt_id))
+            print(f"Montant restant avant paiement: {remaining}")
+            
+            if montant > remaining:
+                reply = QMessageBox.question(
+                    self,
+                    "Montant supérieur",
+                    f"Le montant restant à payer est {format_currency(remaining)}.\nVoulez-vous quand même enregistrer {format_currency(montant)} ?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if reply == QMessageBox.No:
+                    return
+            
+            # Enregistrer le paiement
+            print(f"Appel record_payment({self.current_vente_id}, {montant}, ...)")
+            payment_recorded = record_payment(self.current_vente_id, montant, 
+                             self.payment_date.date().toString("yyyy-MM-dd"))
+            print(f"Résultat: {payment_recorded}")
+            
+            if payment_recorded:
+                print("Paiement enregistré avec succès en BD")
+                
+                # Actualiser les listes IMMÉDIATEMENT après l'enregistrement
+                print("Rafraîchissement des tableaux...")
+                self.refresh_debtors()
+                print("✓ refresh_debtors() OK")
+                
+                if hasattr(self, 'table_manage_debts'):
+                    self.refresh_manage_debts()
+                    print("✓ refresh_manage_debts() OK")
+                
+                # Recharger les infos de la dette pour mettre à jour la progression
+                print("Rechargement des infos de la dette...")
+                self.load_debt_for_payment()
+                print("✓ load_debt_for_payment() OK")
+                
+                self.payment_amount.setValue(0)
+                print("✓ Montant remis à 0")
+                
+                # Générer une facture de paiement (optionnel, ne pas bloquer si erreur)
+                print("\nTentative de génération de facture...")
+                try:
+                    print(f"Récupération données vente: {self.current_vente_id}")
+                    sale_data = get_sale_by_id(self.current_vente_id)
+                    print(f"Sale data: {sale_data is not None}")
+                    
+                    if sale_data and 'articles' in sale_data:
+                        print(f"Données de vente valides, {len(sale_data.get('articles', []))} articles")
+                        
+                        # Recuperer les infos de paiement mises à jour
+                        total_paid = float(get_total_paid_for_debt(self.current_debt_id))
+                        # Convertir remaining en float pour éviter erreur Decimal - float
+                        new_remaining = float(remaining) - float(montant)
+                        
+                        print(f"Total payé: {total_paid}, Nouveau restant: {new_remaining}")
+                        
+                        sale_data['montant_paye'] = total_paid
+                        sale_data['montant_restant'] = new_remaining
+                        # montant du paiement courant pour la facture
+                        sale_data['paiement_courant'] = float(montant)
+                        
+                        os.makedirs("factures", exist_ok=True)
+                        invoice_filename = f"factures/paiement_dette_{self.current_debt_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                        print(f"Génération: {invoice_filename}")
+                        if generate_invoice(sale_data, invoice_filename):
+                            print(f"✓ Facture générée: {invoice_filename}")
+                            reply = QMessageBox.question(
+                                self,
+                                "Facture générée",
+                                "Facture de paiement générée avec succès !\n\nVoulez-vous l'ouvrir ?",
+                                QMessageBox.Yes | QMessageBox.No
+                            )
+                            if reply == QMessageBox.Yes:
+                                open_invoice(invoice_filename)
+                        else:
+                            print("❌ Erreur: Impossible de générer la facture PDF")
+                    else:
+                        print(f"❌ Erreur: Données de vente incomplètes (sale_data={sale_data}, articles={'articles' in (sale_data or {})})")
+                except Exception as e:
+                    import traceback
+                    print(f"❌ Erreur lors de la génération de facture:")
+                    print(traceback.format_exc())
+                
+                print("\n=== AFFICHAGE MESSAGE DE SUCCES ===")
+                QMessageBox.information(self, "Succès", 
+                                      f"Paiement de {format_currency(montant)} enregistré avec succès !")
+                print("=== FIN ENREGISTREMENT PAIEMENT (SUCCES) ===\n")
+            else:
+                print("❌ Paiement non enregistré en BD")
+                QMessageBox.critical(self, "Erreur", "Erreur lors de l'enregistrement du paiement")
         
-        # Enregistrer le paiement
-        if record_payment(self.current_vente_id, montant, 
-                         self.payment_date.date().toString("yyyy-MM-dd")):
-            QMessageBox.information(self, "Succès", 
-                                  f"Paiement de {format_currency(montant)} enregistré avec succès !")
-            
-            # Recharger les infos de la dette pour mettre à jour la progression
-            self.load_debt_for_payment()
-            self.payment_amount.setValue(0)
-            
-            # Actualiser les listes
-            self.refresh_debtors()
-            if hasattr(self, 'table_manage_debts'):
-                self.refresh_manage_debts()
-        else:
-            QMessageBox.critical(self, "Erreur", "Erreur lors de l'enregistrement du paiement")
+        except Exception as e:
+            import traceback
+            print(f"\n❌ ERREUR PRINCIPALE:")
+            print(traceback.format_exc())
+            print("=== FIN ENREGISTREMENT PAIEMENT (ERREUR) ===\n")
+            QMessageBox.critical(self, "Erreur", f"Une erreur est survenue: {str(e)}")

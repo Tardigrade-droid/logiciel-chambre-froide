@@ -949,6 +949,7 @@ def record_payment(vente_id, montant, date_paiement=None):
                      VALUES (%s, %s, %s)"""
             cursor.execute(sql, (date_paiement, montant, vente_id))
             conn.commit()
+            print(f"✓ Paiement inséré en BD pour vente {vente_id}")
             
             # Vérifier si la dette est complètement payée
             sql_check = """SELECT d.id_dette, d.montant_total_dette,
@@ -960,18 +961,27 @@ def record_payment(vente_id, montant, date_paiement=None):
             cursor.execute(sql_check, (vente_id,))
             debt_info = cursor.fetchone()
             
-            if debt_info and debt_info['total_paye'] >= debt_info['montant_total_dette']:
-                # Marquer la dette comme complètement payée
-                sql_update = "UPDATE dette SET statut_dette = 'SOLDE' WHERE id_dette = %s"
-                cursor.execute(sql_update, (debt_info['id_dette'],))
-                conn.commit()
+            if debt_info:
+                print(f"Vérification dette: {debt_info['total_paye']} / {debt_info['montant_total_dette']}")
+                if debt_info['total_paye'] >= debt_info['montant_total_dette']:
+                    # Marquer la dette comme complètement payée
+                    sql_update = "UPDATE dette SET statut_dette = 'SOLDE' WHERE id_dette = %s"
+                    cursor.execute(sql_update, (debt_info['id_dette'],))
+                    conn.commit()
+                    print(f"✓ Dette {debt_info['id_dette']} marquée comme SOLDE")
             
-            return cursor.lastrowid
+            # Retourner True si succès, peu importe lastrowid
+            return True
     except Exception as e:
-        print(f"Erreur: {e}")
-        return None
+        import traceback
+        print(f"❌ Erreur dans record_payment:")
+        print(traceback.format_exc())
+        return False
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except:
+            pass
 
 def get_payments_for_debt(debt_id):
     """Récupère tous les paiements pour une dette"""
