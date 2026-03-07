@@ -7,6 +7,7 @@ from database import (get_all_debts, update_debt_status,
                       is_manager, get_debt_by_id,
                       get_remaining_amount_for_debt, record_payment,
                       get_payments_for_debt, get_total_paid_for_debt)
+from utils import format_currency
 
 
 class DebtsView(QWidget):
@@ -168,9 +169,9 @@ class DebtsView(QWidget):
         progress_layout = QVBoxLayout()
         
         progress_info_layout = QHBoxLayout()
-        self.label_total_debt = QLabel("Montant total : 0.00 FC")
-        self.label_paid = QLabel("Montant payé : 0.00 FC")
-        self.label_remaining = QLabel("Montant restant : 0.00 FC")
+        self.label_total_debt = QLabel("Montant total : 0,00 FC")
+        self.label_paid = QLabel("Montant payé : 0,00 FC")
+        self.label_remaining = QLabel("Montant restant : 0,00 FC")
         progress_info_layout.addWidget(self.label_total_debt)
         progress_info_layout.addWidget(self.label_paid)
         progress_info_layout.addWidget(self.label_remaining)
@@ -261,10 +262,10 @@ class DebtsView(QWidget):
             # Type
             self.table_debtors.setItem(row, 2, QTableWidgetItem(debt['type_dette']))
             # Montant initial
-            self.table_debtors.setItem(row, 3, QTableWidgetItem(f"{debt['montant_total_dette']:.2f}"))
+            self.table_debtors.setItem(row, 3, QTableWidgetItem(format_currency(debt['montant_total_dette'])))
             # Montant restant
             remaining = get_remaining_amount_for_debt(debt['id_dette'])
-            self.table_debtors.setItem(row, 4, QTableWidgetItem(f"{remaining:.2f}"))
+            self.table_debtors.setItem(row, 4, QTableWidgetItem(format_currency(remaining)))
             # Date échéance
             self.table_debtors.setItem(row, 5, QTableWidgetItem(str(debt['date_echeance'])))
             # Statut
@@ -300,7 +301,7 @@ class DebtsView(QWidget):
             # Client
             self.table_manage_debts.setItem(row, 1, QTableWidgetItem(debt['client'] or "N/A"))
             # Montant
-            self.table_manage_debts.setItem(row, 2, QTableWidgetItem(f"{debt['montant_total_dette']:.2f}"))
+            self.table_manage_debts.setItem(row, 2, QTableWidgetItem(format_currency(debt['montant_total_dette'])))
             # Type
             self.table_manage_debts.setItem(row, 3, QTableWidgetItem(debt['type_dette']))
             # Statut
@@ -395,9 +396,9 @@ class DebtsView(QWidget):
         
         # Mise à jour de la progression
         total = debt['montant_total_dette']
-        self.label_total_debt.setText(f"Montant total : {total:.2f} FC")
-        self.label_paid.setText(f"Montant payé : {total_paid:.2f} FC")
-        self.label_remaining.setText(f"Montant restant : {remaining:.2f} FC")
+        self.label_total_debt.setText(f"Montant total : {format_currency(total)}")
+        self.label_paid.setText(f"Montant payé : {format_currency(total_paid)}")
+        self.label_remaining.setText(f"Montant restant : {format_currency(remaining)}")
         
         # Calculer le pourcentage
         if total > 0:
@@ -423,12 +424,12 @@ class DebtsView(QWidget):
         
         for row, payment in enumerate(payments):
             date = QTableWidgetItem(str(payment['date_pai']))
-            amount = QTableWidgetItem(f"{payment['montant_pai']:.2f} FC")
+            amount = QTableWidgetItem(format_currency(payment['montant_pai']))
             current_remaining += payment['montant_pai']  # Recalculate remaining backwards
             
             self.table_payment_history.setItem(row, 0, date)
             self.table_payment_history.setItem(row, 1, amount)
-            self.table_payment_history.setItem(row, 2, QTableWidgetItem(f"{current_remaining:.2f} FC"))
+            self.table_payment_history.setItem(row, 2, QTableWidgetItem(format_currency(current_remaining)))
 
     def record_debt_payment(self):
         """Enregistre un paiement pour une dette"""
@@ -448,7 +449,7 @@ class DebtsView(QWidget):
             reply = QMessageBox.question(
                 self,
                 "Montant supérieur",
-                f"Le montant restant à payer est {remaining:.2f} FC.\nVoulez-vous quand même enregistrer {montant:.2f} FC ?",
+                f"Le montant restant à payer est {format_currency(remaining)}.\nVoulez-vous quand même enregistrer {format_currency(montant)} ?",
                 QMessageBox.Yes | QMessageBox.No
             )
             if reply == QMessageBox.No:
@@ -458,7 +459,7 @@ class DebtsView(QWidget):
         if record_payment(self.current_vente_id, montant, 
                          self.payment_date.date().toString("yyyy-MM-dd")):
             QMessageBox.information(self, "Succès", 
-                                  f"Paiement de {montant:.2f} FC enregistré avec succès !")
+                                  f"Paiement de {format_currency(montant)} enregistré avec succès !")
             
             # Recharger les infos de la dette pour mettre à jour la progression
             self.load_debt_for_payment()

@@ -1,5 +1,6 @@
 # TODO LIST
 
+-[x] Formatage au niveau de l'affichage des sommes d'argent
 -[ ] Enregistrer paiement pour dettes et comptabilite
 -[ ] La Gestion des dettes doit etre ameliore
 -[ ] Le manager doit avoir les ventes de tout le monde

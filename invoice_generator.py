@@ -8,6 +8,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from datetime import datetime
 import os
+from utils import format_currency
 
 
 def generate_invoice(sale_data, output_filename="facture.pdf"):
@@ -91,13 +92,13 @@ def generate_invoice(sale_data, output_filename="facture.pdf"):
         
         table_data.append([
             nom,
-            f"{prix:.2f} FC",
+            format_currency(prix),
             str(quantite),
-            f"{total:.2f} FC"
+            format_currency(total)
         ])
     
     # Ajouter la ligne de total
-    table_data.append(['', '', 'TOTAL GENERAL:', f"{total_amount:.2f} FC"])
+    table_data.append(['', '', 'TOTAL GENERAL:', format_currency(total_amount)])
     
     articles_table = Table(table_data, colWidths=[2.5*inch, 1.5*inch, 1.2*inch, 1.3*inch])
     
@@ -120,7 +121,7 @@ def generate_invoice(sale_data, output_filename="facture.pdf"):
     # Payment info
     payment_data = [
         ['MODE DE PAIEMENT:', sale_data.get('mode_paiement', 'N/A')],
-        ['MONTANT TOTAL:', f"{total_amount:.2f} FC"],
+        ['MONTANT TOTAL:', format_currency(total_amount)],
     ]
     
     # Ajouter montant payé et restant si c'est un crédit
@@ -128,10 +129,10 @@ def generate_invoice(sale_data, output_filename="facture.pdf"):
     montant_restant = sale_data.get('montant_restant')
     
     if montant_paye is not None:
-        payment_data.append(['MONTANT PAYE:', f"{montant_paye:.2f} FC"])
+        payment_data.append(['MONTANT PAYE:', format_currency(montant_paye)])
     
     if montant_restant is not None:
-        payment_data.append(['MONTANT RESTANT A PAYER:', f"{montant_restant:.2f} FC"])
+        payment_data.append(['MONTANT RESTANT A PAYER:', format_currency(montant_restant)])
     
     payment_table = Table(payment_data, colWidths=[2*inch, 4*inch])
     payment_table.setStyle(TableStyle([

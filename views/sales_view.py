@@ -2,13 +2,13 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QF
                              QLineEdit, QComboBox, QPushButton, QLabel, QMessageBox,
                              QTableWidget, QTableWidgetItem, QSpinBox, QDateEdit, QDialog,
                              QRadioButton, QButtonGroup)
-from PySide6.QtCore import Qt, QDate
-from datetime import datetime, timedelta
-from database import (get_all_products, get_all_payment_modes, create_or_get_client,
-                      create_sale, get_sales_by_vendor_id, get_sale_by_id, 
-                      update_sale, is_manager, get_all_debts, update_debt_status, create_debt, is_credit_payment,
+from PySide6.QtCore import QDate
+from datetime import datetime
+from database import (get_all_products, get_all_payment_modes, create_sale, get_sales_by_vendor_id, get_sale_by_id, 
+                      is_manager, create_debt, is_credit_payment,
                       get_clients_by_phone, create_client_direct)
 from invoice_generator import generate_invoice, open_invoice
+from utils import format_currency
 
 
 class ClientSelectionDialog(QDialog):
@@ -169,7 +169,7 @@ class SalesView(QWidget):
         # Total
         total_layout = QHBoxLayout()
         total_layout.addStretch()
-        self.label_total = QLabel("TOTAL : 0.00 FC")
+        self.label_total = QLabel("TOTAL : 0,00 FC")
         self.label_total.setStyleSheet("font-size: 14px; font-weight: bold; color: green;")
         total_layout.addWidget(self.label_total)
         layout.addLayout(total_layout)
@@ -345,15 +345,15 @@ class SalesView(QWidget):
             total += item_total
             
             self.cart_table.setItem(row, 0, QTableWidgetItem(item['nom']))
-            self.cart_table.setItem(row, 1, QTableWidgetItem(f"{item['price']:.2f}"))
+            self.cart_table.setItem(row, 1, QTableWidgetItem(format_currency(item['price'])))
             self.cart_table.setItem(row, 2, QTableWidgetItem(str(item['quantity'])))
-            self.cart_table.setItem(row, 3, QTableWidgetItem(f"{item_total:.2f}"))
+            self.cart_table.setItem(row, 3, QTableWidgetItem(format_currency(item_total)))
             
             btn_remove = QPushButton("❌")
             btn_remove.clicked.connect(lambda checked, r=row: self.remove_from_cart(r))
             self.cart_table.setCellWidget(row, 4, btn_remove)
         
-        self.label_total.setText(f"TOTAL : {total:.2f} FC")
+        self.label_total.setText(f"TOTAL : {format_currency(total)}")
 
     def remove_from_cart(self, row):
         """Supprime un article du panier"""
@@ -522,7 +522,7 @@ class SalesView(QWidget):
             self.table_daily_sales.setItem(row, 2, QTableWidgetItem(sale['mode_paiement'] or "N/A"))
             
             montant = sale['montant_total'] or 0
-            self.table_daily_sales.setItem(row, 3, QTableWidgetItem(f"{montant:.2f}"))
+            self.table_daily_sales.setItem(row, 3, QTableWidgetItem(format_currency(montant)))
             
             btn_details = QPushButton("Voir")
             btn_details.clicked.connect(lambda checked, sid=sale['id_vente']: self.show_sale_details(sid))
@@ -549,9 +549,9 @@ Articles:
         for article in sale['articles']:
             subtotal = article['prix_vente'] * article['quantite']
             total += subtotal
-            msg += f"\n- {article['nom_pr']}: {article['quantite']} x {article['prix_vente']:.2f} = {subtotal:.2f}"
+            msg += f"\n- {article['nom_pr']}: {article['quantite']} x {format_currency(article['prix_vente'])} = {format_currency(subtotal)}"
         
-        msg += f"\n\nTOTAL: {total:.2f} FC"
+        msg += f"\n\nTOTAL: {format_currency(total)}"
         
         QMessageBox.information(self, "Détails de la Vente", msg)
 
@@ -569,5 +569,5 @@ Articles:
         
         # Afficher les détails en formulaire
         # (À améliorer avec possibilité de modification)
-        msg = f"ID Vente: {sale['id_vente']}\nClient: {sale['client']}\nMontant: {sum(a['prix_vente'] * a['quantite'] for a in sale['articles']):.2f}"
+        msg = f"ID Vente: {sale['id_vente']}\nClient: {sale['client']}\nMontant: {format_currency(sum(a['prix_vente'] * a['quantite'] for a in sale['articles']))}"
         QMessageBox.information(self, "Vente chargée", msg)

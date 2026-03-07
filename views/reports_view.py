@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt, QDate
 from database import (get_total_sales_stats, get_sales_by_vendor, 
                       get_sales_by_payment_mode, get_debts_summary, 
                       get_all_sales_detailed, get_sales_by_date_range, is_manager)
+from utils import format_currency
 
 
 class ReportsView(QWidget):
@@ -224,7 +225,7 @@ class ReportsView(QWidget):
             )
             montant = stats['montant_total'] or 0
             self.label_total_amount.setText(
-                f"Montant Total\n{montant:.2f} FC"
+                f"Montant Total\n{format_currency(montant)}"
             )
 
     def load_by_vendor_data(self):
@@ -240,10 +241,10 @@ class ReportsView(QWidget):
             self.table_by_vendor.setItem(row, 1, QTableWidgetItem(str(nombre)))
             # Montant total
             montant = item['montant_total'] or 0
-            self.table_by_vendor.setItem(row, 2, QTableWidgetItem(f"{montant:.2f}"))
+            self.table_by_vendor.setItem(row, 2, QTableWidgetItem(format_currency(montant)))
             # Montant moyen
             moyenne = (montant / nombre) if nombre > 0 else 0
-            self.table_by_vendor.setItem(row, 3, QTableWidgetItem(f"{moyenne:.2f}"))
+            self.table_by_vendor.setItem(row, 3, QTableWidgetItem(format_currency(moyenne)))
 
     def load_by_payment_data(self):
         """Charge les ventes par mode de paiement"""
@@ -258,10 +259,10 @@ class ReportsView(QWidget):
             self.table_by_payment.setItem(row, 1, QTableWidgetItem(str(nombre)))
             # Montant total
             montant = item['montant_total'] or 0
-            self.table_by_payment.setItem(row, 2, QTableWidgetItem(f"{montant:.2f}"))
+            self.table_by_payment.setItem(row, 2, QTableWidgetItem(format_currency(montant)))
             # Montant moyen
             moyenne = (montant / nombre) if nombre > 0 else 0
-            self.table_by_payment.setItem(row, 3, QTableWidgetItem(f"{moyenne:.2f}"))
+            self.table_by_payment.setItem(row, 3, QTableWidgetItem(format_currency(moyenne)))
 
     def load_debts_data(self):
         """Charge le résumé des dettes"""
@@ -278,7 +279,7 @@ class ReportsView(QWidget):
             self.table_debts.setItem(row, 2, QTableWidgetItem(str(nombre)))
             # Montant total
             montant = item['montant_total'] or 0
-            self.table_debts.setItem(row, 3, QTableWidgetItem(f"{montant:.2f}"))
+            self.table_debts.setItem(row, 3, QTableWidgetItem(format_currency(montant)))
 
     def load_all_sales_data(self):
         """Charge toutes les ventes"""
@@ -300,7 +301,7 @@ class ReportsView(QWidget):
             self.table_all_sales.setItem(row, 3, QTableWidgetItem(item.get('client', 'N/A') or "N/A"))
             self.table_all_sales.setItem(row, 4, QTableWidgetItem(item.get('mode_paiement', 'N/A') or "N/A"))
             montant = item.get('montant_total', 0) or 0
-            self.table_all_sales.setItem(row, 5, QTableWidgetItem(f"{montant:.2f}"))
+            self.table_all_sales.setItem(row, 5, QTableWidgetItem(format_currency(montant)))
             self.table_all_sales.setItem(row, 6, QTableWidgetItem(str(item.get('nombre_articles', 0) or 0)))
 
     def refresh_all_data(self):

@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
 from PySide6.QtCore import Qt, QDate
 from database import (get_all_products, get_product_by_id, create_product, 
                       update_product, update_product_stock, is_manager, get_all_product_types)
+from utils import format_currency
 
 
 class StockView(QWidget):
@@ -97,7 +98,7 @@ class StockView(QWidget):
             self.products_table.setItem(row, 2, QTableWidgetItem(product['type'] or "N/A"))
             
             # Prix
-            self.products_table.setItem(row, 3, QTableWidgetItem(f"{product['prix_carton']:.2f}"))
+            self.products_table.setItem(row, 3, QTableWidgetItem(format_currency(product['prix_carton'])))
             
             # Stock
             stock = product['en_stock']
