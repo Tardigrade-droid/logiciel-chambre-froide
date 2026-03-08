@@ -398,24 +398,27 @@ def get_debts_summary(start_date=None, end_date=None):
         conn.close()
 
 def get_all_sales_detailed():
-    """Récupère toutes les ventes avec détails"""
+    """Récupère toutes les ventes avec détails et dettes"""
     try:
         conn = connect_db()
         with conn.cursor() as cursor:
             sql = """SELECT 
                         v.id_vente,
                         v.date_vente,
+                        v.id_ut as id_vendeur,
                         CONCAT(u.prenom_ut, ' ', u.nom_ut) as vendeur,
                         CONCAT(c.nom_client, ' ', c.prenom_client) as client,
                         mp.libelle_mode as mode_paiement,
                         SUM(dv.prix_vente * dv.quantite) as montant_total,
-                        COUNT(dv.id_pr) as nombre_articles
+                        COUNT(dv.id_pr) as nombre_articles,
+                        d.id_dette
                      FROM vente v
                      LEFT JOIN utilisateur u ON v.id_ut = u.id_ut
                      LEFT JOIN client c ON v.id_client = c.id_client
                      LEFT JOIN mode_paiement mp ON v.id_mode = mp.id_mode
                      LEFT JOIN detail_vente dv ON v.id_vente = dv.id_vente
-                     GROUP BY v.id_vente, v.date_vente, vendeur, client, mode_paiement
+                     LEFT JOIN dette d ON v.id_vente = d.id_vente
+                     GROUP BY v.id_vente, v.date_vente, v.id_ut, vendeur, client, mode_paiement, d.id_dette
                      ORDER BY v.date_vente DESC"""
             cursor.execute(sql)
             return cursor.fetchall()
@@ -778,18 +781,22 @@ def get_sale_by_id(sale_id):
         conn.close()
 
 def get_sales_by_vendor_id(vendor_id, start_date=None, end_date=None):
-    """Récupère les ventes d'un vendeur sur une période"""
+    """Récupère les ventes d'un vendeur sur une période avec détails des dettes"""
     try:
         conn = connect_db()
         with conn.cursor() as cursor:
-            sql = """SELECT v.id_vente, v.date_vente, 
+            sql = """SELECT v.id_vente, v.date_vente, v.id_ut as id_vendeur,
+                            CONCAT(u.prenom_ut, ' ', u.nom_ut) as vendeur,
                             CONCAT(c.nom_client, ' ', c.prenom_client) as client,
                             mp.libelle_mode as mode_paiement,
-                            SUM(dv.prix_vente * dv.quantite) as montant_total
+                            SUM(dv.prix_vente * dv.quantite) as montant_total,
+                            d.id_dette
                      FROM vente v
+                     LEFT JOIN utilisateur u ON v.id_ut = u.id_ut
                      LEFT JOIN client c ON v.id_client = c.id_client
                      LEFT JOIN mode_paiement mp ON v.id_mode = mp.id_mode
                      LEFT JOIN detail_vente dv ON v.id_vente = dv.id_vente
+                     LEFT JOIN dette d ON v.id_vente = d.id_vente
                      WHERE v.id_ut = %s"""
             
             params = [vendor_id]
@@ -798,7 +805,7 @@ def get_sales_by_vendor_id(vendor_id, start_date=None, end_date=None):
                 sql += " AND v.date_vente BETWEEN %s AND %s"
                 params.extend([start_date, end_date])
             
-            sql += " GROUP BY v.id_vente, v.date_vente, client, mode_paiement ORDER BY v.date_vente DESC"
+            sql += " GROUP BY v.id_vente, v.date_vente, v.id_ut, vendeur, client, mode_paiement, d.id_dette ORDER BY v.date_vente DESC"
             
             cursor.execute(sql, params)
             return cursor.fetchall()

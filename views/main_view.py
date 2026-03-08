@@ -7,6 +7,7 @@ from views.users_view import UsersView
 from views.reports_view import ReportsView
 from views.debts_view import DebtsView
 from views.stock_view import StockView
+from views.sales_history_view import SalesHistoryView
 from database import is_manager
 
 class MainView(QMainWindow):
@@ -112,9 +113,13 @@ class MainView(QMainWindow):
         btn_hist = QPushButton("Historique Ventes")
         btn_hist.setProperty('class', 'sideMenu')
         btn_hist.clicked.connect(lambda checked=False, b=btn_hist: (self._highlight_side_button(b), self.show_sales_history()))
+        btn_my_sales = QPushButton("Mes Ventes")
+        btn_my_sales.setProperty('class', 'sideMenu')
+        btn_my_sales.clicked.connect(lambda checked=False, b=btn_my_sales: (self._highlight_side_button(b), self.show_my_sales_history()))
         
         self.side_menu.addWidget(btn_nv)
         self.side_menu.addWidget(btn_hist)
+        self.side_menu.addWidget(btn_my_sales)
         self.side_menu.addStretch()
         # auto-trigger first option
         self._activate_first_side_item()
@@ -191,6 +196,12 @@ class MainView(QMainWindow):
     def show_sales_history(self):
         """Ouvre la vue des ventes et affiche l'onglet de l'historique."""
         self.show_sales_view(default_tab=1)
+
+    def show_my_sales_history(self):
+        """Affiche l'historique des ventes du vendeur connecté avec KPIs."""
+        self.my_sales_page = SalesHistoryView(self.user)
+        self.content_stack.addWidget(self.my_sales_page)
+        self.content_stack.setCurrentWidget(self.my_sales_page)
 
     def show_debts_view(self):
         """Affiche la vue de gestion des dettes"""
