@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, 
                              QTableWidget, QTableWidgetItem, QLabel, QPushButton,
                              QDateEdit, QComboBox, QMessageBox, QFormLayout,
-                             QLineEdit, QDoubleSpinBox, QProgressBar, QGroupBox)
+                             QLineEdit, QDoubleSpinBox, QProgressBar, QGroupBox, QDialog)
 from PySide6.QtCore import Qt, QDate
-from database import (get_all_debts, update_debt_status, 
+from database import (get_all_debts, update_debt, update_debt_status, 
                       is_manager, get_debt_by_id,
                       get_remaining_amount_for_debt, record_payment,
                       get_payments_for_debt, get_total_paid_for_debt, get_sale_by_id)
@@ -110,29 +110,76 @@ class DebtsView(QWidget):
         """Onglet pour gérer les dettes (manager)"""
         layout = QVBoxLayout()
         
-        layout.addWidget(QLabel("Gérer les dettes (Manager)"))
+        # Titre
+        title = QLabel("Gérer les Dettes (Manager)")
+        title.setStyleSheet("font-size: 14px; font-weight: bold;")
+        layout.addWidget(title)
         
-        # Tableau des actions
+        # Filtres
+        filters_layout = QHBoxLayout()
+        
+        # Filtre par statut
+        filters_layout.addWidget(QLabel("Statut :"))
+        self.manage_status_filter = QComboBox()
+        self.manage_status_filter.addItems(["TOUS", "NON_SOLDE", "SOLDE"])
+        self.manage_status_filter.currentTextChanged.connect(self.refresh_manage_debts)
+        filters_layout.addWidget(self.manage_status_filter)
+        
+        # Filtre par date début
+        filters_layout.addWidget(QLabel("Du :"))
+        self.manage_start_date = QDateEdit()
+        self.manage_start_date.setDate(QDate.currentDate().addYears(-1))  # 1 an en arrière
+        self.manage_start_date.dateChanged.connect(self.refresh_manage_debts)
+        filters_layout.addWidget(self.manage_start_date)
+        
+        # Filtre par date fin
+        filters_layout.addWidget(QLabel("Au :"))
+        self.manage_end_date = QDateEdit()
+        self.manage_end_date.setDate(QDate.currentDate().addYears(1))  # 1 an en avant
+        self.manage_end_date.dateChanged.connect(self.refresh_manage_debts)
+        filters_layout.addWidget(self.manage_end_date)
+        
+        # Bouton actualiser
+        btn_refresh = QPushButton("🔄 Actualiser")
+        btn_refresh.clicked.connect(self.refresh_manage_debts)
+        filters_layout.addWidget(btn_refresh)
+        
+        # Bouton réinitialiser filtres
+        btn_reset = QPushButton("🔄 Réinitialiser")
+        btn_reset.clicked.connect(self.reset_manage_filters)
+        filters_layout.addWidget(btn_reset)
+        
+        filters_layout.addStretch()
+        layout.addLayout(filters_layout)
+        layout.addSpacing(10)
+        
+        # Tableau des dettes
         self.table_manage_debts = QTableWidget()
         self.table_manage_debts.setColumnCount(7)
         self.table_manage_debts.setHorizontalHeaderLabels([
-            "ID Dette", "Client", "Montant", "Type", "Statut", "Date Échéance", "Action"
+            "ID Dette", "Client", "Total", "Reste à Payer", "Statut", "Date Échéance", "Actions"
         ])
         self.table_manage_debts.setColumnWidth(0, 80)
         self.table_manage_debts.setColumnWidth(1, 200)
         self.table_manage_debts.setColumnWidth(2, 100)
-        self.table_manage_debts.setColumnWidth(3, 100)
+        self.table_manage_debts.setColumnWidth(3, 120)
         self.table_manage_debts.setColumnWidth(4, 100)
         self.table_manage_debts.setColumnWidth(5, 120)
-        self.table_manage_debts.setColumnWidth(6, 150)
+        self.table_manage_debts.setColumnWidth(6, 200)
         
         layout.addWidget(self.table_manage_debts)
         
-        btn_refresh = QPushButton("Actualiser")
-        btn_refresh.clicked.connect(self.refresh_manage_debts)
-        layout.addWidget(btn_refresh)
-        
         self.tab_manage_debts.setLayout(layout)
+        
+        # Actualiser le tableau au démarrage
+        self.refresh_manage_debts()
+
+    def reset_manage_filters(self):
+        """Remet les filtres de gestion des dettes à leurs valeurs par défaut"""
+        self.manage_status_filter.setCurrentText("TOUS")
+        self.manage_start_date.setDate(QDate.currentDate().addYears(-1))
+        self.manage_end_date.setDate(QDate.currentDate().addYears(1))
+        self.refresh_manage_debts()
 
     def setup_record_payment_tab(self):
         """Onglet pour enregistrer un paiement"""
@@ -290,41 +337,96 @@ class DebtsView(QWidget):
             self.table_debtors.setCellWidget(row, 7, btn_action)
 
     def refresh_manage_debts(self):
-        """Actualise le tableau de gestion des dettes"""
+        """Actualise le tableau de gestion des dettes avec filtres"""
         debts = get_all_debts()
         
-        self.table_manage_debts.setRowCount(len(debts))
+        # Appliquer les filtres
+        status_filter = self.manage_status_filter.currentText()
+        start_date = self.manage_start_date.date()
+        end_date = self.manage_end_date.date()
         
-        for row, debt in enumerate(debts):
-            # ID
-            self.table_manage_debts.setItem(row, 0, QTableWidgetItem(str(debt['id_dette'])))
-            # Client
-            self.table_manage_debts.setItem(row, 1, QTableWidgetItem(debt['client'] or "N/A"))
-            # Montant
-            self.table_manage_debts.setItem(row, 2, QTableWidgetItem(format_currency(debt['montant_total_dette'])))
-            # Type
-            self.table_manage_debts.setItem(row, 3, QTableWidgetItem(debt['type_dette']))
-            # Statut
-            self.table_manage_debts.setItem(row, 4, QTableWidgetItem(debt['statut_dette']))
-            # Date échéance
-            self.table_manage_debts.setItem(row, 5, QTableWidgetItem(str(debt['date_echeance'])))
+        filtered_debts = []
+        for debt in debts:
+            # Filtre par statut
+            if status_filter != "TOUS" and debt['statut_dette'] != status_filter:
+                continue
             
-            # Actions
+            # Filtre par date d'échéance
+            debt_date = QDate.fromString(str(debt['date_echeance']), "yyyy-MM-dd")
+            if not (start_date <= debt_date <= end_date):
+                continue
+            
+            filtered_debts.append(debt)
+        
+        self.table_manage_debts.setRowCount(len(filtered_debts))
+        
+        # DEBUG: Afficher les données
+        print(f"\n=== REFRESH MANAGE DEBTS ===")
+        print(f"Nombre de dettes filtrées: {len(filtered_debts)}")
+        
+        for row, debt in enumerate(filtered_debts):
+            # DEBUG: Afficher les clés
+            if row == 0:
+                print(f"Clés disponibles: {debt.keys()}")
+                print(f"\nAffichage des colonnes:")
+            
+            print(f"\nRangée {row}:")
+            
+            # Colonne 0: ID Dette
+            print(f"  Col 0: ID = {debt['id_dette']}")
+            self.table_manage_debts.setItem(row, 0, QTableWidgetItem(str(debt['id_dette'])))
+            
+            # Colonne 1: Client
+            print(f"  Col 1: Client = {debt.get('client', 'N/A')}")
+            self.table_manage_debts.setItem(row, 1, QTableWidgetItem(debt.get('client') or "N/A"))
+            
+            # Colonne 2: Total
+            total = float(debt.get('montant_total_dette', 0))
+            print(f"  Col 2: Total = {total}")
+            col2_item = QTableWidgetItem(format_currency(total))
+            self.table_manage_debts.setItem(row, 2, col2_item)
+            
+            # Colonne 3: Reste à payer
+            remaining = float(get_remaining_amount_for_debt(debt['id_dette']))
+            print(f"  Col 3: Reste à payer = {remaining}")
+            remaining_item = QTableWidgetItem(format_currency(remaining))
+            remaining_item.setForeground(Qt.red if remaining > 0 else Qt.green)
+            self.table_manage_debts.setItem(row, 3, remaining_item)
+            
+            # Colonne 4: Statut
+            print(f"  Col 4: Statut = {debt.get('statut_dette', 'N/A')}")
+            status_item = QTableWidgetItem(debt.get('statut_dette', "N/A"))
+            status_item.setForeground(Qt.red if debt.get('statut_dette') == "NON_SOLDE" else Qt.green)
+            self.table_manage_debts.setItem(row, 4, status_item)
+            
+            # Colonne 5: Date Échéance
+            print(f"  Col 5: Date = {debt.get('date_echeance', 'N/A')}")
+            self.table_manage_debts.setItem(row, 5, QTableWidgetItem(str(debt.get('date_echeance', ""))))
+            
+            # Colonne 6: Actions
+            print(f"  Col 6: Actions (boutons)")
             action_widget = QWidget()
             action_layout = QHBoxLayout()
             
-            btn_mark_paid = QPushButton("✓ Payée")
-            btn_mark_paid.clicked.connect(lambda checked, did=debt['id_dette']: self.mark_as_paid(did))
+            # Bouton verser paiement (seulement si non soldé)
+            if debt.get('statut_dette') == "NON_SOLDE":
+                btn_payment = QPushButton("💰 Verser")
+                btn_payment.setStyleSheet("background-color: #3498db; color: white;")
+                btn_payment.clicked.connect(lambda checked, did=debt['id_dette']: self.navigate_to_payment(did))
+                action_layout.addWidget(btn_payment)
             
+            # Bouton modifier
             btn_edit = QPushButton("✏️ Modifier")
+            btn_edit.setStyleSheet("background-color: #f39c12; color: white;")
             btn_edit.clicked.connect(lambda checked, did=debt['id_dette']: self.edit_debt(did))
-            
-            action_layout.addWidget(btn_mark_paid)
             action_layout.addWidget(btn_edit)
+            
             action_layout.setContentsMargins(0, 0, 0, 0)
             action_widget.setLayout(action_layout)
             
             self.table_manage_debts.setCellWidget(row, 6, action_widget)
+        
+        print(f"=== FIN REFRESH MANAGE DEBTS ===\n")
 
     def navigate_to_payment(self, debt_id):
         """Navigate vers l'onglet de paiement avec la dette pré-chargée"""
@@ -405,7 +507,68 @@ class DebtsView(QWidget):
 
     def edit_debt(self, debt_id):
         """Édite une dette (manager)"""
-        QMessageBox.information(self, "Info", f"Édition de la dette {debt_id} - À implémenter")
+        debt = get_debt_by_id(debt_id)
+        if not debt:
+            QMessageBox.warning(self, "Erreur", "Dette non trouvée")
+            return
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Modifier la dette #{debt_id}")
+        dialog.setModal(True)
+        dialog.resize(400, 300)
+        
+        layout = QVBoxLayout()
+        
+        # Formulaire
+        form_group = QGroupBox("Informations de la dette")
+        form_layout = QFormLayout()
+        
+        # Client (lecture seule)
+        client_label = QLabel(debt['client'] or "N/A")
+        form_layout.addRow("Client:", client_label)
+        
+        # Téléphone (lecture seule)
+        tel_label = QLabel(debt['tel_client'] or "N/A")
+        form_layout.addRow("Téléphone:", tel_label)
+        
+        # Montant total (modifiable)
+        self.edit_total_amount = QDoubleSpinBox()
+        self.edit_total_amount.setRange(0, 1000000)
+        self.edit_total_amount.setValue(float(debt['montant_total_dette']))
+        self.edit_total_amount.setSuffix(" €")
+        form_layout.addRow("Montant total:", self.edit_total_amount)
+        
+        # Date échéance (modifiable)
+        self.edit_due_date = QDateEdit()
+        self.edit_due_date.setDate(QDate.fromString(str(debt['date_echeance']), "yyyy-MM-dd"))
+        form_layout.addRow("Date échéance:", self.edit_due_date)
+        
+        # Statut (modifiable)
+        self.edit_status = QComboBox()
+        self.edit_status.addItems(["NON_SOLDE", "SOLDE"])
+        self.edit_status.setCurrentText(debt['statut_dette'])
+        form_layout.addRow("Statut:", self.edit_status)
+        
+        form_group.setLayout(form_layout)
+        layout.addWidget(form_group)
+        
+        # Boutons
+        buttons_layout = QHBoxLayout()
+        
+        btn_save = QPushButton("💾 Enregistrer")
+        btn_save.setStyleSheet("background-color: #27ae60; color: white;")
+        btn_save.clicked.connect(lambda: self.save_debt_edit(debt_id, dialog))
+        
+        btn_cancel = QPushButton("❌ Annuler")
+        btn_cancel.clicked.connect(dialog.reject)
+        
+        buttons_layout.addWidget(btn_save)
+        buttons_layout.addWidget(btn_cancel)
+        
+        layout.addLayout(buttons_layout)
+        
+        dialog.setLayout(layout)
+        dialog.exec()
 
     def show_client_history(self, client_id):
         """Affiche l'historique d'un client"""
@@ -626,3 +789,87 @@ class DebtsView(QWidget):
             print(traceback.format_exc())
             print("=== FIN ENREGISTREMENT PAIEMENT (ERREUR) ===\n")
             QMessageBox.critical(self, "Erreur", f"Une erreur est survenue: {str(e)}")
+
+    def save_debt_edit(self, debt_id, dialog):
+        """Sauvegarde les modifications d'une dette"""
+        try:
+            # Pour les dettes non soldées, seul la date d'échéance est modifiable
+            new_due_date = self.edit_due_date.date().toString("yyyy-MM-dd")
+            
+            # Mettre à jour seulement la date d'échéance
+            if update_debt(debt_id, new_due_date=new_due_date):
+                QMessageBox.information(self, "Succès", "Date d'échéance modifiée avec succès !")
+                dialog.accept()
+                
+                # Actualiser le tableau
+                self.refresh_manage_debts()
+            else:
+                QMessageBox.critical(self, "Erreur", "Erreur lors de la modification de la dette")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", f"Une erreur est survenue: {str(e)}")
+
+    def edit_debt(self, debt_id):
+        """Édite une dette (manager)"""
+        debt = get_debt_by_id(debt_id)
+        if not debt:
+            QMessageBox.warning(self, "Erreur", "Dette non trouvée")
+            return
+        
+        # Vérifier si la dette est déjà soldée
+        if debt['statut_dette'] == 'SOLDE':
+            QMessageBox.information(self, "Information", "Cette dette est déjà complètement payée et ne peut plus être modifiée.")
+            return
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Modifier la dette #{debt_id}")
+        dialog.setModal(True)
+        dialog.resize(400, 300)
+        
+        layout = QVBoxLayout()
+        
+        # Formulaire
+        form_group = QGroupBox("Informations de la dette")
+        form_layout = QFormLayout()
+        
+        # Client (lecture seule)
+        client_label = QLabel(debt['client'] or "N/A")
+        form_layout.addRow("Client:", client_label)
+        
+        # Téléphone (lecture seule)
+        tel_label = QLabel(debt['tel_client'] or "N/A")
+        form_layout.addRow("Téléphone:", tel_label)
+        
+        # Montant total (lecture seule pour dettes non soldées)
+        total_label = QLabel(format_currency(debt['montant_total_dette']))
+        form_layout.addRow("Montant total:", total_label)
+        
+        # Date échéance (seul champ modifiable pour dettes non soldées)
+        self.edit_due_date = QDateEdit()
+        self.edit_due_date.setDate(QDate.fromString(str(debt['date_echeance']), "yyyy-MM-dd"))
+        form_layout.addRow("Date échéance:", self.edit_due_date)
+        
+        # Statut (lecture seule pour dettes non soldées)
+        status_label = QLabel(debt['statut_dette'])
+        form_layout.addRow("Statut:", status_label)
+        
+        form_group.setLayout(form_layout)
+        layout.addWidget(form_group)
+        
+        # Boutons
+        buttons_layout = QHBoxLayout()
+        
+        btn_save = QPushButton("💾 Enregistrer")
+        btn_save.setStyleSheet("background-color: #27ae60; color: white;")
+        btn_save.clicked.connect(lambda: self.save_debt_edit(debt_id, dialog))
+        
+        btn_cancel = QPushButton("❌ Annuler")
+        btn_cancel.clicked.connect(dialog.reject)
+        
+        buttons_layout.addWidget(btn_save)
+        buttons_layout.addWidget(btn_cancel)
+        
+        layout.addLayout(buttons_layout)
+        
+        dialog.setLayout(layout)
+        dialog.exec()

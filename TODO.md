@@ -5,10 +5,10 @@
 -[x] Ameliorer la vue des details dans les ventes
 -[x] Le manager doit avoir les ventes de tout le monde
 -[x] Modification des ventes chez le manager
--[ ] Enregistrer paiement pour dettes et comptabilite
--[ ] La Gestion des dettes doit etre ameliore
--[ ] Trier les dettes par mois
+-[x] Enregistrer paiement pour dettes et comptabilite
+-[x] La Gestion des dettes doit etre ameliore
+-[x] Trier les dettes par mois
+-[x] Modification des dettes chez le manager
 -[ ] Trier par carton et par argent et gerer les retraits a posteriori
 -[ ] Meme client et numero de telephone
--[ ] Modification des dettes chez le manager
 -[ ] Statistiques generales par mois et filtre

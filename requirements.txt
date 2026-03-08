@@ -3,3 +3,4 @@ pywin32
 reportlab
 pymysql
 bcrypt
+pyinstaller

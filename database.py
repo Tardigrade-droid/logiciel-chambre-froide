@@ -936,6 +936,73 @@ def get_remaining_amount_for_debt(debt_id):
         print(f"Erreur: {e}")
         return 0
 
+def get_all_debts():
+    """Récupère toutes les dettes avec infos client"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            sql = """SELECT d.*, 
+                            CONCAT(c.nom_client, ' ', c.prenom_client) as client,
+                            c.tel_client
+                     FROM dette d
+                     LEFT JOIN vente v ON d.id_vente = v.id_vente
+                     LEFT JOIN client c ON v.id_client = c.id_client
+                     ORDER BY d.date_echeance ASC"""
+            cursor.execute(sql)
+            return cursor.fetchall()
+    except Exception as e:
+        print(f"Erreur: {e}")
+        return []
+    finally:
+        conn.close()
+
+def update_debt_status(debt_id, new_status):
+    """Met à jour le statut d'une dette"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            sql = "UPDATE dette SET statut_dette = %s WHERE id_dette = %s"
+            cursor.execute(sql, (new_status, debt_id))
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Erreur lors de la mise à jour du statut: {e}")
+        return False
+    finally:
+        conn.close()
+
+def update_debt(debt_id, new_total=None, new_due_date=None, new_status=None):
+    """Met à jour une dette"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            fields = []
+            values = []
+            
+            if new_total is not None:
+                fields.append("montant_total_dette = %s")
+                values.append(new_total)
+            if new_due_date is not None:
+                fields.append("date_echeance = %s")
+                values.append(new_due_date)
+            if new_status is not None:
+                fields.append("statut_dette = %s")
+                values.append(new_status)
+            
+            if not fields:
+                return False
+            
+            values.append(debt_id)
+            sql = f"UPDATE dette SET {', '.join(fields)} WHERE id_dette = %s"
+            cursor.execute(sql, values)
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Erreur lors de la mise à jour de la dette: {e}")
+        return False
+    finally:
+        conn.close()
+
 def record_payment(vente_id, montant, date_paiement=None):
     """Enregistre un paiement pour une vente/dette"""
     try:
