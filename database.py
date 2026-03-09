@@ -297,19 +297,23 @@ def can_modify_user(current_user_id, target_user_id):
 
 # ==================== GESTION DES BILANS ET RAPPORTS ====================
 
-def get_total_sales_stats():
+def get_total_sales_stats(start_date=None, end_date=None):
     """Récupère les statistiques globales des ventes"""
     try:
         conn = connect_db()
         with conn.cursor() as cursor:
-            sql = """SELECT 
+            sql = """SELECT
                         COUNT(DISTINCT v.id_vente) as total_ventes,
                         COUNT(DISTINCT v.id_client) as total_clients,
                         COUNT(DISTINCT v.id_ut) as total_vendeurs,
                         SUM(dv.prix_vente * dv.quantite) as montant_total
                      FROM vente v
                      LEFT JOIN detail_vente dv ON v.id_vente = dv.id_vente"""
-            cursor.execute(sql)
+            params = []
+            if start_date and end_date:
+                sql += " WHERE v.date_vente BETWEEN %s AND %s"
+                params = [start_date, end_date]
+            cursor.execute(sql, params)
             return cursor.fetchone()
     except Exception as e:
         print(f"Erreur: {e}")
@@ -317,12 +321,12 @@ def get_total_sales_stats():
     finally:
         conn.close()
 
-def get_sales_by_vendor():
+def get_sales_by_vendor(start_date=None, end_date=None):
     """Récupère les ventes par vendeur"""
     try:
         conn = connect_db()
         with conn.cursor() as cursor:
-            sql = """SELECT 
+            sql = """SELECT
                         u.id_ut,
                         CONCAT(u.prenom_ut, ' ', u.nom_ut) as vendeur,
                         COUNT(v.id_vente) as nombre_ventes,
@@ -330,10 +334,13 @@ def get_sales_by_vendor():
                      FROM utilisateur u
                      LEFT JOIN vente v ON u.id_ut = v.id_ut
                      LEFT JOIN detail_vente dv ON v.id_vente = dv.id_vente
-                     WHERE u.statut = 'ACTIF'
-                     GROUP BY u.id_ut, vendeur
-                     ORDER BY montant_total DESC"""
-            cursor.execute(sql)
+                     WHERE u.statut = 'ACTIF'"""
+            params = []
+            if start_date and end_date:
+                sql += " AND v.date_vente BETWEEN %s AND %s"
+                params = [start_date, end_date]
+            sql += " GROUP BY u.id_ut, vendeur ORDER BY montant_total DESC"
+            cursor.execute(sql, params)
             return cursor.fetchall()
     except Exception as e:
         print(f"Erreur: {e}")
@@ -341,21 +348,24 @@ def get_sales_by_vendor():
     finally:
         conn.close()
 
-def get_sales_by_payment_mode():
+def get_sales_by_payment_mode(start_date=None, end_date=None):
     """Récupère les ventes par mode de paiement"""
     try:
         conn = connect_db()
         with conn.cursor() as cursor:
-            sql = """SELECT 
+            sql = """SELECT
                         mp.libelle_mode as mode_paiement,
                         COUNT(v.id_vente) as nombre_ventes,
                         SUM(dv.prix_vente * dv.quantite) as montant_total
                      FROM vente v
                      LEFT JOIN detail_vente dv ON v.id_vente = dv.id_vente
-                     LEFT JOIN mode_paiement mp ON v.id_mode = mp.id_mode
-                     GROUP BY v.id_mode, mode_paiement
-                     ORDER BY montant_total DESC"""
-            cursor.execute(sql)
+                     LEFT JOIN mode_paiement mp ON v.id_mode = mp.id_mode"""
+            params = []
+            if start_date and end_date:
+                sql += " WHERE v.date_vente BETWEEN %s AND %s"
+                params = [start_date, end_date]
+            sql += " GROUP BY v.id_mode, mode_paiement ORDER BY montant_total DESC"
+            cursor.execute(sql, params)
             return cursor.fetchall()
     except Exception as e:
         print(f"Erreur: {e}")
@@ -363,19 +373,23 @@ def get_sales_by_payment_mode():
     finally:
         conn.close()
 
-def get_debts_summary():
+def get_debts_summary(start_date=None, end_date=None):
     """Récupère le résumé des dettes"""
     try:
         conn = connect_db()
         with conn.cursor() as cursor:
-            sql = """SELECT 
+            sql = """SELECT
                         d.statut_dette as statut,
                         COUNT(DISTINCT d.id_dette) as nombre_dettes,
                         SUM(d.montant_total_dette) as montant_total,
                         d.type_dette
-                     FROM dette d
-                     GROUP BY d.statut_dette, d.type_dette"""
-            cursor.execute(sql)
+                     FROM dette d"""
+            params = []
+            if start_date and end_date:
+                sql += " WHERE d.date_echeance BETWEEN %s AND %s"
+                params = [start_date, end_date]
+            sql += " GROUP BY d.statut_dette, d.type_dette"
+            cursor.execute(sql, params)
             return cursor.fetchall()
     except Exception as e:
         print(f"Erreur: {e}")
@@ -384,26 +398,77 @@ def get_debts_summary():
         conn.close()
 
 def get_all_sales_detailed():
-    """Récupère toutes les ventes avec détails"""
+    """Récupère toutes les ventes avec détails et dettes"""
     try:
         conn = connect_db()
         with conn.cursor() as cursor:
             sql = """SELECT 
                         v.id_vente,
                         v.date_vente,
+                        v.id_ut as id_vendeur,
                         CONCAT(u.prenom_ut, ' ', u.nom_ut) as vendeur,
                         CONCAT(c.nom_client, ' ', c.prenom_client) as client,
                         mp.libelle_mode as mode_paiement,
                         SUM(dv.prix_vente * dv.quantite) as montant_total,
-                        COUNT(dv.id_pr) as nombre_articles
+                        COUNT(dv.id_pr) as nombre_articles,
+                        d.id_dette
                      FROM vente v
                      LEFT JOIN utilisateur u ON v.id_ut = u.id_ut
                      LEFT JOIN client c ON v.id_client = c.id_client
                      LEFT JOIN mode_paiement mp ON v.id_mode = mp.id_mode
                      LEFT JOIN detail_vente dv ON v.id_vente = dv.id_vente
-                     GROUP BY v.id_vente, v.date_vente, vendeur, client, mode_paiement
+                     LEFT JOIN dette d ON v.id_vente = d.id_vente
+                     GROUP BY v.id_vente, v.date_vente, v.id_ut, vendeur, client, mode_paiement, d.id_dette
                      ORDER BY v.date_vente DESC"""
             cursor.execute(sql)
+            return cursor.fetchall()
+    except Exception as e:
+        print(f"Erreur: {e}")
+        return []
+    finally:
+        conn.close()
+
+def get_pending_withdrawals(status_filter="ULTERIEUR", date_from=None, vendor_id=None):
+    """Récupère les retraits en attente ou tous les retraits selon les filtres"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            sql = """SELECT 
+                        v.id_vente,
+                        v.date_vente,
+                        v.statut_retrait,
+                        v.date_retrait_effective,
+                        v.id_ut as id_vendeur,
+                        CONCAT(u.prenom_ut, ' ', u.nom_ut) as vendeur,
+                        CONCAT(c.nom_client, ' ', c.prenom_client) as client,
+                        SUM(dv.prix_vente * dv.quantite) as montant_total
+                     FROM vente v
+                     LEFT JOIN utilisateur u ON v.id_ut = u.id_ut
+                     LEFT JOIN client c ON v.id_client = c.id_client
+                     LEFT JOIN detail_vente dv ON v.id_vente = dv.id_vente
+                     WHERE 1=1"""
+            
+            params = []
+            
+            # Filtre par statut
+            if status_filter == "ULTERIEUR":
+                sql += " AND v.statut_retrait = 'ULTERIEUR'"
+            # Sinon on récupère tous les retraits
+            
+            # Filtre par date
+            if date_from:
+                sql += " AND v.date_vente >= %s"
+                params.append(date_from)
+            
+            # Filtre par vendeur
+            if vendor_id:
+                sql += " AND v.id_ut = %s"
+                params.append(vendor_id)
+            
+            sql += " GROUP BY v.id_vente, v.date_vente, v.statut_retrait, v.date_retrait_effective, v.id_ut, vendeur, client"
+            sql += " ORDER BY v.date_retrait_effective DESC, v.date_vente DESC"
+            
+            cursor.execute(sql, params)
             return cursor.fetchall()
     except Exception as e:
         print(f"Erreur: {e}")
@@ -764,18 +829,22 @@ def get_sale_by_id(sale_id):
         conn.close()
 
 def get_sales_by_vendor_id(vendor_id, start_date=None, end_date=None):
-    """Récupère les ventes d'un vendeur sur une période"""
+    """Récupère les ventes d'un vendeur sur une période avec détails des dettes"""
     try:
         conn = connect_db()
         with conn.cursor() as cursor:
-            sql = """SELECT v.id_vente, v.date_vente, 
+            sql = """SELECT v.id_vente, v.date_vente, v.id_ut as id_vendeur,
+                            CONCAT(u.prenom_ut, ' ', u.nom_ut) as vendeur,
                             CONCAT(c.nom_client, ' ', c.prenom_client) as client,
                             mp.libelle_mode as mode_paiement,
-                            SUM(dv.prix_vente * dv.quantite) as montant_total
+                            SUM(dv.prix_vente * dv.quantite) as montant_total,
+                            d.id_dette
                      FROM vente v
+                     LEFT JOIN utilisateur u ON v.id_ut = u.id_ut
                      LEFT JOIN client c ON v.id_client = c.id_client
                      LEFT JOIN mode_paiement mp ON v.id_mode = mp.id_mode
                      LEFT JOIN detail_vente dv ON v.id_vente = dv.id_vente
+                     LEFT JOIN dette d ON v.id_vente = d.id_vente
                      WHERE v.id_ut = %s"""
             
             params = [vendor_id]
@@ -784,7 +853,7 @@ def get_sales_by_vendor_id(vendor_id, start_date=None, end_date=None):
                 sql += " AND v.date_vente BETWEEN %s AND %s"
                 params.extend([start_date, end_date])
             
-            sql += " GROUP BY v.id_vente, v.date_vente, client, mode_paiement ORDER BY v.date_vente DESC"
+            sql += " GROUP BY v.id_vente, v.date_vente, v.id_ut, vendeur, client, mode_paiement, d.id_dette ORDER BY v.date_vente DESC"
             
             cursor.execute(sql, params)
             return cursor.fetchall()
@@ -936,6 +1005,73 @@ def get_remaining_amount_for_debt(debt_id):
         print(f"Erreur: {e}")
         return 0
 
+def get_all_debts():
+    """Récupère toutes les dettes avec infos client"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            sql = """SELECT d.*, 
+                            CONCAT(c.nom_client, ' ', c.prenom_client) as client,
+                            c.tel_client
+                     FROM dette d
+                     LEFT JOIN vente v ON d.id_vente = v.id_vente
+                     LEFT JOIN client c ON v.id_client = c.id_client
+                     ORDER BY d.date_echeance ASC"""
+            cursor.execute(sql)
+            return cursor.fetchall()
+    except Exception as e:
+        print(f"Erreur: {e}")
+        return []
+    finally:
+        conn.close()
+
+def update_debt_status(debt_id, new_status):
+    """Met à jour le statut d'une dette"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            sql = "UPDATE dette SET statut_dette = %s WHERE id_dette = %s"
+            cursor.execute(sql, (new_status, debt_id))
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Erreur lors de la mise à jour du statut: {e}")
+        return False
+    finally:
+        conn.close()
+
+def update_debt(debt_id, new_total=None, new_due_date=None, new_status=None):
+    """Met à jour une dette"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            fields = []
+            values = []
+            
+            if new_total is not None:
+                fields.append("montant_total_dette = %s")
+                values.append(new_total)
+            if new_due_date is not None:
+                fields.append("date_echeance = %s")
+                values.append(new_due_date)
+            if new_status is not None:
+                fields.append("statut_dette = %s")
+                values.append(new_status)
+            
+            if not fields:
+                return False
+            
+            values.append(debt_id)
+            sql = f"UPDATE dette SET {', '.join(fields)} WHERE id_dette = %s"
+            cursor.execute(sql, values)
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Erreur lors de la mise à jour de la dette: {e}")
+        return False
+    finally:
+        conn.close()
+
 def record_payment(vente_id, montant, date_paiement=None):
     """Enregistre un paiement pour une vente/dette"""
     try:
@@ -949,6 +1085,7 @@ def record_payment(vente_id, montant, date_paiement=None):
                      VALUES (%s, %s, %s)"""
             cursor.execute(sql, (date_paiement, montant, vente_id))
             conn.commit()
+            print(f"✓ Paiement inséré en BD pour vente {vente_id}")
             
             # Vérifier si la dette est complètement payée
             sql_check = """SELECT d.id_dette, d.montant_total_dette,
@@ -960,18 +1097,27 @@ def record_payment(vente_id, montant, date_paiement=None):
             cursor.execute(sql_check, (vente_id,))
             debt_info = cursor.fetchone()
             
-            if debt_info and debt_info['total_paye'] >= debt_info['montant_total_dette']:
-                # Marquer la dette comme complètement payée
-                sql_update = "UPDATE dette SET statut_dette = 'SOLDE' WHERE id_dette = %s"
-                cursor.execute(sql_update, (debt_info['id_dette'],))
-                conn.commit()
+            if debt_info:
+                print(f"Vérification dette: {debt_info['total_paye']} / {debt_info['montant_total_dette']}")
+                if debt_info['total_paye'] >= debt_info['montant_total_dette']:
+                    # Marquer la dette comme complètement payée
+                    sql_update = "UPDATE dette SET statut_dette = 'SOLDE' WHERE id_dette = %s"
+                    cursor.execute(sql_update, (debt_info['id_dette'],))
+                    conn.commit()
+                    print(f"✓ Dette {debt_info['id_dette']} marquée comme SOLDE")
             
-            return cursor.lastrowid
+            # Retourner True si succès, peu importe lastrowid
+            return True
     except Exception as e:
-        print(f"Erreur: {e}")
-        return None
+        import traceback
+        print(f"❌ Erreur dans record_payment:")
+        print(traceback.format_exc())
+        return False
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except:
+            pass
 
 def get_payments_for_debt(debt_id):
     """Récupère tous les paiements pour une dette"""

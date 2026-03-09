@@ -7,6 +7,8 @@ from views.users_view import UsersView
 from views.reports_view import ReportsView
 from views.debts_view import DebtsView
 from views.stock_view import StockView
+from views.sales_history_view import SalesHistoryView
+from views.withdrawals_view import WithdrawalsView
 from database import is_manager
 
 class MainView(QMainWindow):
@@ -14,7 +16,8 @@ class MainView(QMainWindow):
         super().__init__()
         self.user = user
         # set the same icon for the main window (in case app icon isn't inherited)
-        self.setWindowIcon(QIcon("images/logo.png"))
+        from utils import resource_path
+        self.setWindowIcon(QIcon(resource_path("images/logo.png")))
         # [cite_start]Utilisation du nom et statut récupérés de la DB [cite: 14, 16]
         self.setWindowTitle(f"Chambre Froide - {user['prenom_ut']} ({user['statut']})")
         self.resize(1200, 800)
@@ -112,9 +115,17 @@ class MainView(QMainWindow):
         btn_hist = QPushButton("Historique Ventes")
         btn_hist.setProperty('class', 'sideMenu')
         btn_hist.clicked.connect(lambda checked=False, b=btn_hist: (self._highlight_side_button(b), self.show_sales_history()))
+        btn_my_sales = QPushButton("Mes Ventes")
+        btn_my_sales.setProperty('class', 'sideMenu')
+        btn_my_sales.clicked.connect(lambda checked=False, b=btn_my_sales: (self._highlight_side_button(b), self.show_my_sales_history()))
+        btn_withdrawals = QPushButton("Gestion des Retraits")
+        btn_withdrawals.setProperty('class', 'sideMenu')
+        btn_withdrawals.clicked.connect(lambda checked=False, b=btn_withdrawals: (self._highlight_side_button(b), self.show_withdrawals_view()))
         
         self.side_menu.addWidget(btn_nv)
         self.side_menu.addWidget(btn_hist)
+        self.side_menu.addWidget(btn_my_sales)
+        self.side_menu.addWidget(btn_withdrawals)
         self.side_menu.addStretch()
         # auto-trigger first option
         self._activate_first_side_item()
@@ -191,6 +202,18 @@ class MainView(QMainWindow):
     def show_sales_history(self):
         """Ouvre la vue des ventes et affiche l'onglet de l'historique."""
         self.show_sales_view(default_tab=1)
+
+    def show_my_sales_history(self):
+        """Affiche l'historique des ventes du vendeur connecté avec KPIs."""
+        self.my_sales_page = SalesHistoryView(self.user)
+        self.content_stack.addWidget(self.my_sales_page)
+        self.content_stack.setCurrentWidget(self.my_sales_page)
+
+    def show_withdrawals_view(self):
+        """Affiche la vue de gestion des retraits programmés."""
+        self.withdrawals_page = WithdrawalsView(self.user)
+        self.content_stack.addWidget(self.withdrawals_page)
+        self.content_stack.setCurrentWidget(self.withdrawals_page)
 
     def show_debts_view(self):
         """Affiche la vue de gestion des dettes"""

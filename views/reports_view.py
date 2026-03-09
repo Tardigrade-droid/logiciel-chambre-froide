@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt, QDate
 from database import (get_total_sales_stats, get_sales_by_vendor, 
                       get_sales_by_payment_mode, get_debts_summary, 
                       get_all_sales_detailed, get_sales_by_date_range, is_manager)
+from utils import format_currency
 
 
 class ReportsView(QWidget):
@@ -72,6 +73,27 @@ class ReportsView(QWidget):
         """Onglet des statistiques générales"""
         layout = QVBoxLayout()
         
+        # Filtres de date
+        filters_layout = QHBoxLayout()
+        filters_layout.addWidget(QLabel("Période :"))
+        self.stats_date_start = QDateEdit()
+        self.stats_date_start.setDate(QDate.currentDate().addMonths(-1))
+        self.stats_date_start.dateChanged.connect(self.load_general_stats)
+        filters_layout.addWidget(self.stats_date_start)
+        
+        filters_layout.addWidget(QLabel("à"))
+        self.stats_date_end = QDateEdit()
+        self.stats_date_end.setDate(QDate.currentDate())
+        self.stats_date_end.dateChanged.connect(self.load_general_stats)
+        filters_layout.addWidget(self.stats_date_end)
+        
+        btn_refresh_stats = QPushButton("🔄 Actualiser")
+        btn_refresh_stats.clicked.connect(self.load_general_stats)
+        filters_layout.addWidget(btn_refresh_stats)
+        
+        filters_layout.addStretch()
+        layout.addLayout(filters_layout)
+        
         # Conteneur pour les statistiques en cartes
         stats_layout = QHBoxLayout()
         
@@ -80,7 +102,7 @@ class ReportsView(QWidget):
         self.label_total_vendors = QLabel()
         self.label_total_amount = QLabel()
         
-        # Styliser les labelss
+        # Styliser les labels
         for label in [self.label_total_sales, self.label_total_clients, 
                       self.label_total_vendors, self.label_total_amount]:
             label.setStyleSheet("""
@@ -107,6 +129,27 @@ class ReportsView(QWidget):
         """Onglet des ventes par vendeur"""
         layout = QVBoxLayout()
         
+        # Filtres de date
+        filters_layout = QHBoxLayout()
+        filters_layout.addWidget(QLabel("Période :"))
+        self.vendor_date_start = QDateEdit()
+        self.vendor_date_start.setDate(QDate.currentDate().addMonths(-1))
+        self.vendor_date_start.dateChanged.connect(self.load_by_vendor_data)
+        filters_layout.addWidget(self.vendor_date_start)
+        
+        filters_layout.addWidget(QLabel("à"))
+        self.vendor_date_end = QDateEdit()
+        self.vendor_date_end.setDate(QDate.currentDate())
+        self.vendor_date_end.dateChanged.connect(self.load_by_vendor_data)
+        filters_layout.addWidget(self.vendor_date_end)
+        
+        btn_refresh_vendor = QPushButton("🔄 Actualiser")
+        btn_refresh_vendor.clicked.connect(self.load_by_vendor_data)
+        filters_layout.addWidget(btn_refresh_vendor)
+        
+        filters_layout.addStretch()
+        layout.addLayout(filters_layout)
+        
         self.table_by_vendor = QTableWidget()
         self.table_by_vendor.setColumnCount(4)
         self.table_by_vendor.setHorizontalHeaderLabels([
@@ -119,15 +162,32 @@ class ReportsView(QWidget):
         
         layout.addWidget(self.table_by_vendor)
         
-        btn_refresh = QPushButton("Actualiser")
-        btn_refresh.clicked.connect(self.load_by_vendor_data)
-        layout.addWidget(btn_refresh)
-        
         self.tab_by_vendor.setLayout(layout)
 
     def setup_by_payment_tab(self):
         """Onglet des ventes par mode de paiement"""
         layout = QVBoxLayout()
+        
+        # Filtres de date
+        filters_layout = QHBoxLayout()
+        filters_layout.addWidget(QLabel("Période :"))
+        self.payment_date_start = QDateEdit()
+        self.payment_date_start.setDate(QDate.currentDate().addMonths(-1))
+        self.payment_date_start.dateChanged.connect(self.load_by_payment_data)
+        filters_layout.addWidget(self.payment_date_start)
+        
+        filters_layout.addWidget(QLabel("à"))
+        self.payment_date_end = QDateEdit()
+        self.payment_date_end.setDate(QDate.currentDate())
+        self.payment_date_end.dateChanged.connect(self.load_by_payment_data)
+        filters_layout.addWidget(self.payment_date_end)
+        
+        btn_refresh_payment = QPushButton("🔄 Actualiser")
+        btn_refresh_payment.clicked.connect(self.load_by_payment_data)
+        filters_layout.addWidget(btn_refresh_payment)
+        
+        filters_layout.addStretch()
+        layout.addLayout(filters_layout)
         
         self.table_by_payment = QTableWidget()
         self.table_by_payment.setColumnCount(4)
@@ -141,15 +201,32 @@ class ReportsView(QWidget):
         
         layout.addWidget(self.table_by_payment)
         
-        btn_refresh = QPushButton("Actualiser")
-        btn_refresh.clicked.connect(self.load_by_payment_data)
-        layout.addWidget(btn_refresh)
-        
         self.tab_by_payment.setLayout(layout)
 
     def setup_debts_tab(self):
         """Onglet de gestion des dettes"""
         layout = QVBoxLayout()
+        
+        # Filtres de date
+        filters_layout = QHBoxLayout()
+        filters_layout.addWidget(QLabel("Période :"))
+        self.debts_date_start = QDateEdit()
+        self.debts_date_start.setDate(QDate.currentDate().addMonths(-1))
+        self.debts_date_start.dateChanged.connect(self.load_debts_data)
+        filters_layout.addWidget(self.debts_date_start)
+        
+        filters_layout.addWidget(QLabel("à"))
+        self.debts_date_end = QDateEdit()
+        self.debts_date_end.setDate(QDate.currentDate())
+        self.debts_date_end.dateChanged.connect(self.load_debts_data)
+        filters_layout.addWidget(self.debts_date_end)
+        
+        btn_refresh_debts = QPushButton("🔄 Actualiser")
+        btn_refresh_debts.clicked.connect(self.load_debts_data)
+        filters_layout.addWidget(btn_refresh_debts)
+        
+        filters_layout.addStretch()
+        layout.addLayout(filters_layout)
         
         self.table_debts = QTableWidget()
         self.table_debts.setColumnCount(4)
@@ -163,32 +240,31 @@ class ReportsView(QWidget):
         
         layout.addWidget(self.table_debts)
         
-        btn_refresh = QPushButton("Actualiser")
-        btn_refresh.clicked.connect(self.load_debts_data)
-        layout.addWidget(btn_refresh)
-        
         self.tab_debts.setLayout(layout)
 
     def setup_all_sales_tab(self):
         """Onglet de toutes les ventes"""
         layout = QVBoxLayout()
         
-        # Filtres
+        # Filtres de date
         filters_layout = QHBoxLayout()
-        filters_layout.addWidget(QLabel("De :"))
+        filters_layout.addWidget(QLabel("Période :"))
         self.date_start = QDateEdit()
         self.date_start.setDate(QDate.currentDate().addMonths(-1))
+        self.date_start.dateChanged.connect(self.load_all_sales_data)
         filters_layout.addWidget(self.date_start)
         
-        filters_layout.addWidget(QLabel("À :"))
+        filters_layout.addWidget(QLabel("à"))
         self.date_end = QDateEdit()
         self.date_end.setDate(QDate.currentDate())
+        self.date_end.dateChanged.connect(self.load_all_sales_data)
         filters_layout.addWidget(self.date_end)
         
-        btn_filter = QPushButton("Filtrer")
+        btn_filter = QPushButton("🔄 Actualiser")
         btn_filter.clicked.connect(self.load_all_sales_data)
         filters_layout.addWidget(btn_filter)
         
+        filters_layout.addStretch()
         layout.addLayout(filters_layout)
         
         # Tableau
@@ -211,7 +287,10 @@ class ReportsView(QWidget):
 
     def load_general_stats(self):
         """Charge les statistiques générales"""
-        stats = get_total_sales_stats()
+        start_date = self.stats_date_start.date().toString("yyyy-MM-dd")
+        end_date = self.stats_date_end.date().toString("yyyy-MM-dd")
+        
+        stats = get_total_sales_stats(start_date, end_date)
         if stats:
             self.label_total_sales.setText(
                 f"Total Ventes\n{stats['total_ventes'] or 0}"
@@ -224,12 +303,15 @@ class ReportsView(QWidget):
             )
             montant = stats['montant_total'] or 0
             self.label_total_amount.setText(
-                f"Montant Total\n{montant:.2f} FC"
+                f"Montant Total\n{format_currency(montant)}"
             )
 
     def load_by_vendor_data(self):
         """Charge les ventes par vendeur"""
-        data = get_sales_by_vendor()
+        start_date = self.vendor_date_start.date().toString("yyyy-MM-dd")
+        end_date = self.vendor_date_end.date().toString("yyyy-MM-dd")
+        
+        data = get_sales_by_vendor(start_date, end_date)
         self.table_by_vendor.setRowCount(len(data))
         
         for row, item in enumerate(data):
@@ -240,14 +322,17 @@ class ReportsView(QWidget):
             self.table_by_vendor.setItem(row, 1, QTableWidgetItem(str(nombre)))
             # Montant total
             montant = item['montant_total'] or 0
-            self.table_by_vendor.setItem(row, 2, QTableWidgetItem(f"{montant:.2f}"))
+            self.table_by_vendor.setItem(row, 2, QTableWidgetItem(format_currency(montant)))
             # Montant moyen
             moyenne = (montant / nombre) if nombre > 0 else 0
-            self.table_by_vendor.setItem(row, 3, QTableWidgetItem(f"{moyenne:.2f}"))
+            self.table_by_vendor.setItem(row, 3, QTableWidgetItem(format_currency(moyenne)))
 
     def load_by_payment_data(self):
         """Charge les ventes par mode de paiement"""
-        data = get_sales_by_payment_mode()
+        start_date = self.payment_date_start.date().toString("yyyy-MM-dd")
+        end_date = self.payment_date_end.date().toString("yyyy-MM-dd")
+        
+        data = get_sales_by_payment_mode(start_date, end_date)
         self.table_by_payment.setRowCount(len(data))
         
         for row, item in enumerate(data):
@@ -258,14 +343,17 @@ class ReportsView(QWidget):
             self.table_by_payment.setItem(row, 1, QTableWidgetItem(str(nombre)))
             # Montant total
             montant = item['montant_total'] or 0
-            self.table_by_payment.setItem(row, 2, QTableWidgetItem(f"{montant:.2f}"))
+            self.table_by_payment.setItem(row, 2, QTableWidgetItem(format_currency(montant)))
             # Montant moyen
             moyenne = (montant / nombre) if nombre > 0 else 0
-            self.table_by_payment.setItem(row, 3, QTableWidgetItem(f"{moyenne:.2f}"))
+            self.table_by_payment.setItem(row, 3, QTableWidgetItem(format_currency(moyenne)))
 
     def load_debts_data(self):
         """Charge le résumé des dettes"""
-        data = get_debts_summary()
+        start_date = self.debts_date_start.date().toString("yyyy-MM-dd")
+        end_date = self.debts_date_end.date().toString("yyyy-MM-dd")
+        
+        data = get_debts_summary(start_date, end_date)
         self.table_debts.setRowCount(len(data))
         
         for row, item in enumerate(data):
@@ -278,7 +366,7 @@ class ReportsView(QWidget):
             self.table_debts.setItem(row, 2, QTableWidgetItem(str(nombre)))
             # Montant total
             montant = item['montant_total'] or 0
-            self.table_debts.setItem(row, 3, QTableWidgetItem(f"{montant:.2f}"))
+            self.table_debts.setItem(row, 3, QTableWidgetItem(format_currency(montant)))
 
     def load_all_sales_data(self):
         """Charge toutes les ventes"""
@@ -300,7 +388,7 @@ class ReportsView(QWidget):
             self.table_all_sales.setItem(row, 3, QTableWidgetItem(item.get('client', 'N/A') or "N/A"))
             self.table_all_sales.setItem(row, 4, QTableWidgetItem(item.get('mode_paiement', 'N/A') or "N/A"))
             montant = item.get('montant_total', 0) or 0
-            self.table_all_sales.setItem(row, 5, QTableWidgetItem(f"{montant:.2f}"))
+            self.table_all_sales.setItem(row, 5, QTableWidgetItem(format_currency(montant)))
             self.table_all_sales.setItem(row, 6, QTableWidgetItem(str(item.get('nombre_articles', 0) or 0)))
 
     def refresh_all_data(self):
