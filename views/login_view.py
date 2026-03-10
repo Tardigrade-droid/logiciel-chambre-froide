@@ -11,7 +11,7 @@ class LoginView(QWidget):
         from utils import resource_path
         # application icon (also appears on the login window)
         self.setWindowIcon(QIcon(resource_path("images/logo.png")))
-        self.setWindowTitle("Connexion - Gestion Chambre Froide")
+        self.setWindowTitle("Connexion - Gestion SOCIETE CAMELEON GABRIELLA <<SOCAGA>>")
         self.setFixedSize(380, 450)
         self.setup_ui()
 

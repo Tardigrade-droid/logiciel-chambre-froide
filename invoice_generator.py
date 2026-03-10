@@ -53,7 +53,20 @@ def generate_invoice(sale_data, output_filename="facture.pdf"):
         alignment=1  # Center
     )
     
-    elements.append(Paragraph("CHAMBRE FROIDE", title_style))
+    elements.append(Paragraph("SOCIETE CAMELEON GABRIELLA", title_style))
+    elements.append(Paragraph("SOCAGA en sigle", title_style))
+    company_info = [
+        "N. RCCM: CD/KND/RCCM/21-B-788",
+        "ID. NAT: N. 14-F4300-N04828N",
+        "N. IMPOT: A2202409T",
+        "Adresse: N.03, Av. Potopoto, Q/Kasuku, C/Kasuku, Ville de Kindu",
+        "Province du Maniema, RDC",
+        "0815100000, 0993200000, 0997800000, 0840000031, 0855555483",
+        "Email: mussagabriel85@gmail.com, mussagabriel82@gmail.com"
+    ]
+    for info in company_info:
+        elements.append(Paragraph(info, styles['Normal']))
+    elements.append(Spacer(1, 0.2*inch))
     elements.append(Spacer(1, 0.2*inch))
     
     # Facture header
@@ -268,7 +281,7 @@ def print_thermal_receipt(sale_data, printer_width="80mm"):
 
     # En-tête
     add_centered("=" * (max_chars // 2))
-    add_centered("CHAMBRE FROIDE")
+    add_centered("SOCIETE CAMELEON GABRIELLA <<SOCAGA>>")
     add_centered("REÇU DE VENTE")
     add_centered("=" * (max_chars // 2))
 
@@ -366,7 +379,7 @@ def print_thermal_receipt(sale_data, printer_width="80mm"):
         printer_name = win32print.GetDefaultPrinter()
         hprinter_dc = win32ui.CreateDC()
         hprinter_dc.CreatePrinterDC(printer_name)
-        hprinter_dc.StartDoc("Reçu Chambre Froide")
+        hprinter_dc.StartDoc("Reçu SOCIETE CAMELEON GABRIELLA <<SOCAGA>>")
         hprinter_dc.StartPage()
 
         dib = ImageWin.Dib(image)
