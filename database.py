@@ -1186,3 +1186,70 @@ def get_payments_by_date_and_vendor(date, vendor_id=None):
         return []
     finally:
         conn.close()
+
+
+def update_sale_details(sale_id, new_articles):
+    """Met à jour les détails d'une vente (ajout/suppression de produits)"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            # Supprimer les anciens détails
+            sql_delete = "DELETE FROM detail_vente WHERE id_vente = %s"
+            cursor.execute(sql_delete, (sale_id,))
+            
+            # Insérer les nouveaux détails
+            for article in new_articles:
+                sql_insert = """INSERT INTO detail_vente (id_vente, id_pr, quantite, prix_vente)
+                               VALUES (%s, %s, %s, %s)"""
+                cursor.execute(sql_insert, (
+                    sale_id,
+                    article['id_pr'],
+                    article['quantite'],
+                    article['prix_vente']
+                ))
+            
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"Erreur lors de la mise à jour des détails de vente: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def delete_debt(debt_id):
+    """Supprime une dette"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            # Supprimer d'abord les paiements associés
+            sql_delete_payments = "DELETE FROM paiement WHERE id_vente = (SELECT id_vente FROM dette WHERE id_dette = %s)"
+            cursor.execute(sql_delete_payments, (debt_id,))
+            
+            # Supprimer la dette
+            sql_delete_debt = "DELETE FROM dette WHERE id_dette = %s"
+            cursor.execute(sql_delete_debt, (debt_id,))
+            
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"Erreur lors de la suppression de la dette: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def update_debt_amount(debt_id, new_amount):
+    """Met à jour le montant d'une dette"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            sql = "UPDATE dette SET montant_total_dette = %s WHERE id_dette = %s"
+            cursor.execute(sql, (new_amount, debt_id))
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"Erreur lors de la mise à jour du montant de la dette: {e}")
+        return False
+    finally:
+        conn.close()

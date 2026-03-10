@@ -857,23 +857,29 @@ class SalesView(QWidget):
         self.btn_save.hide()
         self.btn_cancel.hide()
 
-    def refresh_product_combo(self):
+    def refresh_product_combo(self, combo_box=None):
         """Met à jour la liste des produits"""
+        if combo_box is None:
+            combo_box = self.product_combo
+            
         products = get_all_products()
-        self.product_combo.clear()
+        combo_box.clear()
         
         for product in products:
             stock_info = f" (Stock: {product['en_stock']})"
             text = f"{product['nom_pr']} - {product['prix_carton']} FC{stock_info}"
-            self.product_combo.addItem(text, product['id_pr'])
+            combo_box.addItem(text, product['id_pr'])
 
-    def refresh_payment_modes(self):
+    def refresh_payment_modes(self, combo_box=None):
         """Met à jour les modes de paiement"""
+        if combo_box is None:
+            combo_box = self.payment_mode
+            
         modes = get_all_payment_modes()
-        self.payment_mode.clear()
+        combo_box.clear()
         
         for mode in modes:
-            self.payment_mode.addItem(mode['libelle_mode'], mode['id_mode'])
+            combo_box.addItem(mode['libelle_mode'], mode['id_mode'])
 
     def add_to_cart(self):
         """Ajoute un produit au panier"""
@@ -1243,11 +1249,16 @@ class SalesView(QWidget):
         # Section édition
         # Mode de paiement
         self.edit_payment_mode = QComboBox()
-        self.refresh_payment_modes()  # Remplir les modes
+        self.refresh_payment_modes(self.edit_payment_mode)  # Passer le combobox en paramètre
         # Sélectionner le mode actuel
+        print(f"DÉBOGAGE: Mode actuel de la vente: {sale['id_mode']}")
+        print(f"DÉBOGAGE: Nombre d'items dans combobox: {self.edit_payment_mode.count()}")
         for i in range(self.edit_payment_mode.count()):
-            if self.edit_payment_mode.itemData(i) == sale['id_mode']:
+            item_data = self.edit_payment_mode.itemData(i)
+            print(f"DÉBOGAGE: Item {i}: {self.edit_payment_mode.itemText(i)} -> {item_data}")
+            if item_data == sale['id_mode']:
                 self.edit_payment_mode.setCurrentIndex(i)
+                print(f"DÉBOGAGE: Mode sélectionné: index {i}")
                 break
         self.edit_form_layout.addRow("Mode de Paiement :", self.edit_payment_mode)
         
@@ -1269,6 +1280,82 @@ class SalesView(QWidget):
         self.edit_date_retrait.setEnabled(sale['statut_retrait'] == "ULTERIEUR")
         self.edit_form_layout.addRow("Date Retrait :", self.edit_date_retrait)
         
+        # Section gestion des produits
+        products_group = QGroupBox("Gestion des Produits")
+        products_group.setStyleSheet("""QGroupBox {
+            font-weight: bold;
+            border: 2px solid #f39c12;
+            border-radius: 5px;
+            margin-top: 1ex;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 10px 0 10px;
+        }""")
+        products_layout = QVBoxLayout()
+        
+        # Tableau des produits actuels
+        self.edit_products_table = QTableWidget()
+        self.edit_products_table.setColumnCount(5)
+        self.edit_products_table.setHorizontalHeaderLabels(["Produit", "Prix", "Quantité", "Total", "Actions"])
+        self.edit_products_table.setColumnWidth(0, 200)
+        self.edit_products_table.setColumnWidth(1, 100)
+        self.edit_products_table.setColumnWidth(2, 80)
+        self.edit_products_table.setColumnWidth(3, 100)
+        self.edit_products_table.setColumnWidth(4, 100)
+        
+        # Remplir le tableau avec les produits actuels
+        self.edit_products_table.setRowCount(len(sale['articles']))
+        for row, article in enumerate(sale['articles']):
+            self.edit_products_table.setItem(row, 0, QTableWidgetItem(article['nom_pr']))
+            self.edit_products_table.setItem(row, 1, QTableWidgetItem(format_currency(article['prix_vente'])))
+            self.edit_products_table.setItem(row, 2, QTableWidgetItem(str(article['quantite'])))
+            total = article['prix_vente'] * article['quantite']
+            self.edit_products_table.setItem(row, 3, QTableWidgetItem(format_currency(total)))
+            
+            # Bouton supprimer
+            btn_remove = QPushButton("❌")
+            btn_remove.setStyleSheet("color: red; font-weight: bold;")
+            btn_remove.clicked.connect(lambda checked, r=row: self.remove_product_from_edit(r))
+            self.edit_products_table.setCellWidget(row, 4, btn_remove)
+        
+        products_layout.addWidget(self.edit_products_table)
+        
+        # Section ajouter un produit
+        add_layout = QHBoxLayout()
+        add_layout.addWidget(QLabel("Ajouter un produit :"))
+        
+        self.edit_product_combo = QComboBox()
+        self.refresh_product_combo(self.edit_product_combo)  # Passer le combobox en paramètre
+        add_layout.addWidget(self.edit_product_combo)
+        
+        self.edit_quantity_spin = QSpinBox()
+        self.edit_quantity_spin.setMinimum(1)
+        self.edit_quantity_spin.setValue(1)
+        add_layout.addWidget(QLabel("Qté:"))
+        add_layout.addWidget(self.edit_quantity_spin)
+        
+        btn_add_product = QPushButton("➕ Ajouter")
+        btn_add_product.setStyleSheet("background-color: #27ae60; color: white;")
+        btn_add_product.clicked.connect(self.add_product_to_edit)
+        add_layout.addWidget(btn_add_product)
+        
+        add_layout.addStretch()
+        products_layout.addLayout(add_layout)
+        
+        # Total actuel
+        self.edit_total_label = QLabel(f"Total actuel : {format_currency(sum(a['prix_vente'] * a['quantite'] for a in sale['articles']))}")
+        self.edit_total_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #27ae60;")
+        products_layout.addWidget(self.edit_total_label)
+        
+        products_group.setLayout(products_layout)
+        self.edit_form_layout.addRow(products_group)
+        
+        # Stocker les articles originaux et les modifications
+        self.original_articles = sale['articles'].copy()
+        self.modified_articles = sale['articles'].copy()
+        
         # Afficher les groupes et boutons
         self.info_group.show()
         self.edit_group.show()
@@ -1281,38 +1368,264 @@ class SalesView(QWidget):
         """Active/désactive la date de retrait selon le statut"""
         self.edit_date_retrait.setEnabled(self.edit_retrait_status.currentText() == "ULTERIEUR")
     
+    def add_product_to_edit(self):
+        """Ajoute un produit à la vente en cours d'édition"""
+        if not hasattr(self, 'modified_articles'):
+            return
+        
+        product_id = self.edit_product_combo.currentData()
+        quantity = self.edit_quantity_spin.value()
+        
+        # Récupérer les infos du produit
+        product = None
+        products = get_all_products()
+        for p in products:
+            if p['id_pr'] == product_id:
+                product = p
+                break
+        
+        if not product:
+            QMessageBox.warning(self, "Erreur", "Produit non trouvé")
+            return
+        
+        if product['en_stock'] < quantity:
+            QMessageBox.warning(self, "Stock insuffisant", 
+                              f"Seulement {product['en_stock']} articles disponibles")
+            return
+        
+        # Vérifier si le produit existe déjà
+        found = False
+        for item in self.modified_articles:
+            if item['id_pr'] == product_id:
+                item['quantite'] += quantity
+                found = True
+                break
+        
+        if not found:
+            self.modified_articles.append({
+                'id_pr': product_id,
+                'nom_pr': product['nom_pr'],
+                'prix_vente': product['prix_carton'],
+                'quantite': quantity
+            })
+        
+        self.update_edit_products_display()
+        self.edit_quantity_spin.setValue(1)
+    
+    def remove_product_from_edit(self, row):
+        """Supprime un produit de la vente en cours d'édition"""
+        if not hasattr(self, 'modified_articles') or row >= len(self.modified_articles):
+            return
+        
+        # Demander confirmation
+        product_name = self.modified_articles[row]['nom_pr']
+        reply = QMessageBox.question(
+            self,
+            "Confirmation",
+            f"Êtes-vous sûr de vouloir retirer '{product_name}' de cette vente ?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            self.modified_articles.pop(row)
+            self.update_edit_products_display()
+    
+    def update_edit_products_display(self):
+        """Met à jour l'affichage du tableau des produits en édition"""
+        if not hasattr(self, 'modified_articles'):
+            return
+        
+        self.edit_products_table.setRowCount(len(self.modified_articles))
+        
+        total = 0
+        for row, article in enumerate(self.modified_articles):
+            self.edit_products_table.setItem(row, 0, QTableWidgetItem(article['nom_pr']))
+            self.edit_products_table.setItem(row, 1, QTableWidgetItem(format_currency(article['prix_vente'])))
+            self.edit_products_table.setItem(row, 2, QTableWidgetItem(str(article['quantite'])))
+            item_total = article['prix_vente'] * article['quantite']
+            total += item_total
+            self.edit_products_table.setItem(row, 3, QTableWidgetItem(format_currency(item_total)))
+            
+            # Bouton supprimer
+            btn_remove = QPushButton("❌")
+            btn_remove.setStyleSheet("color: red; font-weight: bold;")
+            btn_remove.clicked.connect(lambda checked, r=row: self.remove_product_from_edit(r))
+            self.edit_products_table.setCellWidget(row, 4, btn_remove)
+        
+        self.edit_total_label.setText(f"Total actuel : {format_currency(total)}")
+    
     def save_sale_modifications(self):
-        """Sauvegarde les modifications de la vente"""
-        if not hasattr(self, 'current_sale_edit'):
+        """Sauvegarde les modifications de la vente avec gestion des produits et dettes"""
+        if not hasattr(self, 'current_sale_edit') or not hasattr(self, 'modified_articles'):
             QMessageBox.warning(self, "Erreur", "Aucune vente chargée")
             return
+        
+        # Vérifier que tous les widgets d'édition existent
+        required_widgets = ['edit_payment_mode', 'edit_retrait_status', 'edit_date_retrait']
+        for widget_name in required_widgets:
+            if not hasattr(self, widget_name):
+                QMessageBox.critical(self, "Erreur", f"Widget manquant: {widget_name}")
+                return
         
         sale_id = self.current_sale_edit['id_vente']
         payment_mode_id = self.edit_payment_mode.currentData()
         retrait_status = self.edit_retrait_status.currentText()
         date_retrait = None
         
+        print(f"DÉBOGAGE: edit_payment_mode existe: {hasattr(self, 'edit_payment_mode')}")
+        if hasattr(self, 'edit_payment_mode'):
+            print(f"DÉBOGAGE: Combobox count: {self.edit_payment_mode.count()}")
+            print(f"DÉBOGAGE: Current index: {self.edit_payment_mode.currentIndex()}")
+            print(f"DÉBOGAGE: Current text: '{self.edit_payment_mode.currentText()}'")
+            print(f"DÉBOGAGE: Current data: {self.edit_payment_mode.currentData()}")
+        
+        if payment_mode_id is None:
+            QMessageBox.critical(self, "Erreur", "Mode de paiement non sélectionné ou invalide")
+            return
+        
         if retrait_status == "ULTERIEUR":
             date_retrait = self.edit_date_retrait.date().toString("yyyy-MM-dd")
         
-        # Appeler la fonction update_sale de la base de données
-        if update_sale(
-            sale_id,
-            payment_mode_id=payment_mode_id,
-            statut_retrait=retrait_status,
-            date_retrait=date_retrait
-        ):
-            QMessageBox.information(
-                self,
-                "Succès",
-                f"Vente #{sale_id} modifiée avec succès !\n\n"
-                f"Mode de paiement : {self.edit_payment_mode.currentText()}\n"
-                f"Statut retrait : {retrait_status}\n"
-                f"Date retrait : {date_retrait or 'N/A'}"
-            )
+        # Calculer le nouveau total
+        new_total = sum(a['prix_vente'] * a['quantite'] for a in self.modified_articles)
+        old_total = sum(a['prix_vente'] * a['quantite'] for a in self.original_articles)
+        
+        # Vérifier si les produits ont changé (comparaison plus robuste)
+        def articles_equal(a1, a2):
+            return (a1.get('id_pr') == a2.get('id_pr') and 
+                   a1.get('quantite') == a2.get('quantite') and 
+                   a1.get('prix_vente') == a2.get('prix_vente'))
+        
+        products_changed = (len(self.modified_articles) != len(self.original_articles) or 
+                          not all(any(articles_equal(mod, orig) for orig in self.original_articles) 
+                                 for mod in self.modified_articles))
+        
+        # Importer les fonctions nécessaires
+        from database import update_sale_details, create_debt, delete_debt, record_payment, is_credit_payment
+        
+        # Validation des données
+        if not self.modified_articles:
+            QMessageBox.warning(self, "Erreur", "La vente doit contenir au moins un produit")
+            return
+        
+        # Vérifier que tous les articles ont les clés nécessaires
+        for i, article in enumerate(self.modified_articles):
+            if 'id_pr' not in article:
+                QMessageBox.critical(self, "Erreur", f"Article {i+1} : ID produit manquant")
+                return
+            if 'quantite' not in article or article['quantite'] <= 0:
+                QMessageBox.critical(self, "Erreur", f"Article {i+1} : Quantité invalide")
+                return
+            if 'prix_vente' not in article or article['prix_vente'] <= 0:
+                QMessageBox.critical(self, "Erreur", f"Article {i+1} : Prix invalide")
+                return
+        
+        try:
+            print(f"DÉBOGAGE: Début sauvegarde vente #{sale_id}")
+            print(f"DÉBOGAGE: Mode paiement: {payment_mode_id}, Retrait: {retrait_status}, Produits changés: {products_changed}")
+            
+            if not update_sale(
+                sale_id,
+                payment_mode_id=payment_mode_id,
+                statut_retrait=retrait_status,
+                date_retrait=date_retrait
+            ):
+                QMessageBox.critical(self, "Erreur", "Erreur lors de la mise à jour de la vente")
+                return
+            
+            print("DÉBOGAGE: Informations de base mises à jour")
+            
+            # 2. Mettre à jour les produits si nécessaire
+            if products_changed:
+                print(f"DÉBOGAGE: Mise à jour des produits - {len(self.modified_articles)} articles")
+                success = update_sale_details(sale_id, self.modified_articles)
+                if not success:
+                    QMessageBox.critical(self, "Erreur", "Erreur lors de la mise à jour des produits")
+                    return
+                print("DÉBOGAGE: Produits mis à jour")
+            
+            # 3. Gérer les conséquences sur les dettes
+            old_payment_mode_id = self.current_sale_edit['id_mode']
+            old_is_credit = is_credit_payment(old_payment_mode_id)
+            new_is_credit = is_credit_payment(payment_mode_id)
+            existing_debt_id = self.current_sale_edit.get('id_dette')
+            
+            print(f"DÉBOGAGE: Gestion dettes - Ancien crédit: {old_is_credit}, Nouveau crédit: {new_is_credit}")
+            print(f"DÉBOGAGE: Montant ancien: {old_total}, Montant nouveau: {new_total}")
+            print(f"DÉBOGAGE: Produits changés: {products_changed}, Dette existante: {existing_debt_id}")
+            
+            # Cas 1: Passage de cash à crédit
+            if not old_is_credit and new_is_credit:
+                # Créer une dette
+                debt_id = create_debt(sale_id, new_total, "ARGENT", QDate.currentDate().addDays(7).toString("yyyy-MM-dd"))
+                if debt_id:
+                    print(f"DÉBOGAGE: Nouvelle dette créée #{debt_id}")
+                    QMessageBox.information(self, "Dette créée", f"Une dette #{debt_id} a été créée pour cette vente.")
+                else:
+                    QMessageBox.warning(self, "Avertissement", "La vente a été mise à jour mais la dette n'a pas pu être créée.")
+            
+            # Cas 2: Passage de crédit à cash
+            elif old_is_credit and not new_is_credit:
+                # Supprimer la dette existante et enregistrer un paiement
+                if existing_debt_id:
+                    print(f"DÉBOGAGE: Suppression de la dette #{existing_debt_id}")
+                    if delete_debt(existing_debt_id):
+                        # Enregistrer un paiement pour le montant total
+                        payment_id = record_payment(sale_id, new_total, payment_mode_id, self.user['id_ut'])
+                        if payment_id:
+                            print(f"DÉBOGAGE: Paiement #{payment_id} créé")
+                            QMessageBox.information(self, "Paiement enregistré", 
+                                                  f"La dette a été supprimée et un paiement #{payment_id} a été enregistré.")
+                        else:
+                            QMessageBox.warning(self, "Avertissement", 
+                                              "La dette a été supprimée mais le paiement n'a pas pu être enregistré.")
+                    else:
+                        QMessageBox.warning(self, "Avertissement", 
+                                          "Erreur lors de la suppression de la dette. La vente a été mise à jour.")
+            
+            # Cas 3: Crédit persistant
+            elif old_is_credit and new_is_credit:
+                if existing_debt_id:
+                    # Mettre à jour le montant de la dette si les produits ou le total ont changé
+                    if products_changed or new_total != old_total:
+                        from database import update_debt_amount
+                        print(f"DÉBOGAGE: Mise à jour de la dette #{existing_debt_id} - montant passant de {old_total} à {new_total}")
+                        if update_debt_amount(existing_debt_id, new_total):
+                            print(f"DÉBOGAGE: Dette #{existing_debt_id} mise à jour")
+                            QMessageBox.information(self, "Dette mise à jour", 
+                                                  f"Le montant de la dette #{existing_debt_id} a été ajusté à {format_currency(new_total)}.")
+                        else:
+                            QMessageBox.warning(self, "Avertissement", 
+                                              "Erreur lors de la mise à jour du montant de la dette.")
+            
+            # Message de succès
+            changes = []
+            if payment_mode_id != old_payment_mode_id:
+                changes.append(f"Mode de paiement modifié")
+            if retrait_status != (self.current_sale_edit['statut_retrait'] or "IMMEDIAT"):
+                changes.append(f"Statut retrait : {retrait_status}")
+            if products_changed:
+                changes.append(f"Produits modifiés (total : {format_currency(new_total)})")
+            
+            print(f"DÉBOGAGE: Changements détectés: {changes}")
+            
+            if changes:
+                QMessageBox.information(
+                    self,
+                    "Succès",
+                    f"Vente #{sale_id} modifiée avec succès !\n\n" + "\n".join(f"✓ {change}" for change in changes)
+                )
+            else:
+                QMessageBox.information(self, "Succès", f"Vente #{sale_id} mise à jour (montant total: {format_currency(new_total)})")
+            
             self.clear_sale_edit()
-        else:
-            QMessageBox.critical(self, "Erreur", "Erreur lors de la mise à jour de la vente")
+            
+        except Exception as e:
+            import traceback
+            error_msg = f"Erreur lors de la sauvegarde de la vente #{sale_id} :\n{str(e)}"
+            print("ERREUR save_sale_modifications:")
+            print(traceback.format_exc())
+            QMessageBox.critical(self, "Erreur critique", error_msg)
     
     def clear_sale_edit(self):
         """Réinitialise le formulaire d'édition"""
