@@ -8,7 +8,7 @@ from datetime import datetime
 from database import (get_all_products, get_all_payment_modes, create_sale, get_sales_by_vendor_id, get_sale_by_id, 
                       is_manager, create_debt, is_credit_payment,
                       get_clients_by_phone, create_client_direct, update_sale, get_all_users, get_all_sales_detailed,
-                      get_remaining_amount_for_debt, get_total_paid_for_debt, get_payments_by_date_and_vendor)
+                      get_remaining_amount_for_debt, get_total_paid_for_debt, get_payments_by_date_and_vendor, update_sale_details)
 from invoice_generator import generate_invoice, open_invoice, print_thermal_receipt, generate_and_print_receipt
 from utils import format_currency, ask_print_options
 
@@ -1501,7 +1501,7 @@ class SalesView(QWidget):
                                  for mod in self.modified_articles))
         
         # Importer les fonctions nécessaires
-        from database import update_sale_details, create_debt, delete_debt, record_payment, is_credit_payment
+        from database import update_sale, create_debt, delete_debt, record_payment, is_credit_payment
         
         # Validation des données
         if not self.modified_articles:
@@ -1524,12 +1524,17 @@ class SalesView(QWidget):
             print(f"DÉBOGAGE: Début sauvegarde vente #{sale_id}")
             print(f"DÉBOGAGE: Mode paiement: {payment_mode_id}, Retrait: {retrait_status}, Produits changés: {products_changed}")
             
-            if not update_sale(
+            # Appel à update_sale avec la liste complète des articles modifiés
+            from database import update_sale
+            success = update_sale(
                 sale_id,
-                payment_mode_id=payment_mode_id,
-                statut_retrait=retrait_status,
-                date_retrait=date_retrait
-            ):
+                payment_mode_id,
+                retrait_status,
+                date_retrait,
+                new_details=self.modified_articles
+            )
+            
+            if not success:
                 QMessageBox.critical(self, "Erreur", "Erreur lors de la mise à jour de la vente")
                 return
             

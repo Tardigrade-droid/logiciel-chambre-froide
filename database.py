@@ -876,14 +876,36 @@ def can_modify_sale(current_user_id, sale_id):
     """Vérifie si l'utilisateur peut modifier une vente (seul manager peut)"""
     return is_manager(current_user_id)
 
-def update_sale(sale_id, payment_mode_id=None, statut_retrait=None, date_retrait=None):
-    """Met à jour une vente (manager uniquement)"""
+def update_sale(sale_id, payment_mode_id=None, statut_retrait=None, date_retrait=None, new_details=None):
+    """
+    Met à jour une vente et synchronise les paiements/dettes en fonction des changements.
+    - Vérifie si les détails des articles ont changé (produits, quantités, prix).
+    - Met à jour paiement/dette uniquement si nécessaire.
+    """
     try:
         conn = connect_db()
         with conn.cursor() as cursor:
+            # Récupérer les anciens détails de la vente
+            cursor.execute("SELECT id_pr, quantite, prix_vente FROM detail_vente WHERE id_vente = %s", (sale_id,))
+            old_details = cursor.fetchall()
+
+            # Comparer les anciens détails avec les nouveaux
+            old_details_set = {(item['id_pr'], item['quantite'], item['prix_vente']) for item in old_details}
+            new_details_set = {(item['id_pr'], item['quantite'], item['prix_vente']) for item in new_details}
+
+            details_changed = old_details_set != new_details_set
+
+            # Recalculer le montant total à partir des nouveaux détails
+            new_total = sum(item['quantite'] * item['prix_vente'] for item in new_details)
+
+            # Récupérer l'ancien mode de paiement
+            cursor.execute("SELECT id_mode FROM vente WHERE id_vente = %s", (sale_id,))
+            old_sale = cursor.fetchone()
+            old_mode = old_sale['id_mode'] if old_sale else None
+
+            # Mettre à jour la table vente
             fields = []
             values = []
-            
             if payment_mode_id is not None:
                 fields.append("id_mode = %s")
                 values.append(payment_mode_id)
@@ -893,20 +915,68 @@ def update_sale(sale_id, payment_mode_id=None, statut_retrait=None, date_retrait
             if date_retrait is not None:
                 fields.append("date_retrait_effective = %s")
                 values.append(date_retrait)
-            
             if not fields:
                 return False
-            
+
             values.append(sale_id)
             sql = f"UPDATE vente SET {', '.join(fields)} WHERE id_vente = %s"
             cursor.execute(sql, values)
+
+            # Si les détails ont changé, mettre à jour detail_vente
+            if details_changed:
+                cursor.execute("DELETE FROM detail_vente WHERE id_vente = %s", (sale_id,))
+                for item in new_details:
+                    cursor.execute(
+                        "INSERT INTO detail_vente (id_vente, id_pr, quantite, prix_vente) VALUES (%s, %s, %s, %s)",
+                        (sale_id, item['id_pr'], item['quantite'], item['prix_vente'])
+                    )
+
+            # Synchroniser paiement/dette si nécessaire
+            is_credit = is_credit_payment(payment_mode_id)
+            was_credit = is_credit_payment(old_mode)
+
+            if details_changed or old_mode != payment_mode_id:
+                if not was_credit and is_credit:
+                    # Passer de cash à dette
+                    cursor.execute("DELETE FROM paiement WHERE id_vente = %s", (sale_id,))
+                    cursor.execute("SELECT id_dette FROM dette WHERE id_vente = %s", (sale_id,))
+                    if not cursor.fetchone():
+                        from datetime import datetime, timedelta
+                        date_echeance = (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+                        cursor.execute(
+                            "INSERT INTO dette (id_vente, montant_total_dette, type_dette, date_echeance, statut_dette) VALUES (%s, %s, %s, %s, 'NON_SOLDE')",
+                            (sale_id, new_total, 'VENTE', date_echeance)
+                        )
+                elif was_credit and not is_credit:
+                    # Passer de dette à cash
+                    cursor.execute("DELETE FROM dette WHERE id_vente = %s", (sale_id,))
+                    from datetime import datetime
+                    date_paiement = datetime.now().strftime('%Y-%m-%d')
+                    cursor.execute("SELECT id_ut FROM vente WHERE id_vente = %s", (sale_id,))
+                    vendeur = cursor.fetchone()
+                    id_vendeur = vendeur['id_ut'] if vendeur else None
+                    if id_vendeur:
+                        cursor.execute(
+                            "INSERT INTO paiement (date_pai, montant_pai, id_vente, id_vendeur_collecteur) VALUES (%s, %s, %s, %s)",
+                            (date_paiement, new_total, sale_id, id_vendeur)
+                        )
+                else:
+                    # Mettre à jour paiement ou dette existant
+                    if is_credit:
+                        cursor.execute("UPDATE dette SET montant_total_dette = %s WHERE id_vente = %s", (new_total, sale_id))
+                    else:
+                        cursor.execute("UPDATE paiement SET montant_pai = %s WHERE id_vente = %s", (new_total, sale_id))
+
             conn.commit()
-            return cursor.rowcount > 0
+            return True
     except Exception as e:
         print(f"Erreur: {e}")
+        if conn:
+            conn.rollback()
         return False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 # ==================== GESTION DES DETTES ====================
 
