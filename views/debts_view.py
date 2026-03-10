@@ -80,6 +80,20 @@ class DebtsView(QWidget):
         filters_layout.addWidget(QLabel("Statut :"))
         filters_layout.addWidget(self.filter_status)
         
+        # Filtre par nom client
+        filters_layout.addWidget(QLabel("Client :"))
+        self.filter_client_name = QLineEdit()
+        self.filter_client_name.setPlaceholderText("Nom du client...")
+        self.filter_client_name.textChanged.connect(self.refresh_debtors)
+        filters_layout.addWidget(self.filter_client_name)
+        
+        # Filtre par téléphone
+        filters_layout.addWidget(QLabel("Téléphone :"))
+        self.filter_client_phone = QLineEdit()
+        self.filter_client_phone.setPlaceholderText("Numéro de téléphone...")
+        self.filter_client_phone.textChanged.connect(self.refresh_debtors)
+        filters_layout.addWidget(self.filter_client_phone)
+        
         btn_refresh = QPushButton("Actualiser")
         btn_refresh.clicked.connect(self.refresh_debtors)
         filters_layout.addWidget(btn_refresh)
@@ -359,6 +373,8 @@ class DebtsView(QWidget):
         # Appliquer les filtres
         type_filter = self.filter_type.currentText()
         status_filter = self.filter_status.currentText()
+        client_name_filter = self.filter_client_name.text().strip().lower()
+        client_phone_filter = self.filter_client_phone.text().strip().lower()
         
         filtered_debts = []
         for debt in debts:
@@ -367,6 +383,12 @@ class DebtsView(QWidget):
                 continue
             # Filtre par statut
             if status_filter != "TOUS" and debt['statut_dette'] != status_filter:
+                continue
+            # Filtre par nom client
+            if client_name_filter and client_name_filter not in (debt.get('client') or "").lower():
+                continue
+            # Filtre par téléphone
+            if client_phone_filter and client_phone_filter not in (debt.get('tel_client') or "").lower():
                 continue
             filtered_debts.append(debt)
         
