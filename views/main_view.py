@@ -112,7 +112,7 @@ class MainView(QMainWindow):
         btn_nv = QPushButton("Nouvelle Vente")
         btn_nv.setProperty('class', 'sideMenu')
         btn_nv.clicked.connect(lambda checked=False, b=btn_nv: (self._highlight_side_button(b), self.show_sales_view()))
-        btn_hist = QPushButton("Historique Ventes")
+        btn_hist = QPushButton("Historique Paiements")
         btn_hist.setProperty('class', 'sideMenu')
         btn_hist.clicked.connect(lambda checked=False, b=btn_hist: (self._highlight_side_button(b), self.show_sales_history()))
         btn_my_sales = QPushButton("Mes Ventes")

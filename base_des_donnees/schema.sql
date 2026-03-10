@@ -76,9 +76,11 @@ CREATE TABLE paiement(
     id_pai INT AUTO_INCREMENT NOT NULL,
     date_pai DATE NOT NULL,
     montant_pai DECIMAL(15,2) NOT NULL,
-    id_vente INT NOT NULL,
+    id_vente INT NOT NULL,  -- Lien vers la vente
+    id_vendeur_collecteur INT NOT NULL,  -- Nouveau : vendeur qui a perçu le paiement
     PRIMARY KEY(id_pai),
-    CONSTRAINT fk_paiement_vente FOREIGN KEY(id_vente) REFERENCES vente(id_vente)
+    CONSTRAINT fk_paiement_vente FOREIGN KEY(id_vente) REFERENCES vente(id_vente),  -- Connexion préservée
+    CONSTRAINT fk_paiement_collecteur FOREIGN KEY(id_vendeur_collecteur) REFERENCES utilisateur(id_ut)
 );
 
 -- 1. Ajout du post-nom pour le client

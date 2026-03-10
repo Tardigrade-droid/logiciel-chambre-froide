@@ -769,18 +769,26 @@ def create_sale(client_id, vendor_id, payment_mode_id, sale_items, statut_retrai
                            VALUES (NOW(), %s, %s, %s, %s, %s)"""
             cursor.execute(sql_vente, (payment_mode_id, client_id, vendor_id, statut_retrait, date_retrait))
             vente_id = cursor.lastrowid
-            
-            # Insérer les articles et décrémenter le stock
+
+            # Calculer le montant total et insérer les articles
+            total_amount = 0
             sql_detail = """INSERT INTO detail_vente (id_vente, id_pr, prix_vente, quantite)
                             VALUES (%s, %s, %s, %s)"""
-            
+
             for item in sale_items:
+                item_total = item['price'] * item['quantity']
+                total_amount += item_total
                 cursor.execute(sql_detail, (vente_id, item['product_id'], item['price'], item['quantity']))
                 # Décrémenter le stock
                 sql_stock = "UPDATE produit SET en_stock = en_stock - %s WHERE id_pr = %s"
                 cursor.execute(sql_stock, (item['quantity'], item['product_id']))
-            
+
             conn.commit()
+
+            # Si ce n'est pas un paiement à crédit (dette), enregistrer automatiquement le paiement
+            if not is_credit_payment(payment_mode_id):
+                record_payment(vente_id, total_amount, collector_id=vendor_id)
+
             return vente_id
     except Exception as e:
         if conn:
@@ -1073,20 +1081,32 @@ def update_debt(debt_id, new_total=None, new_due_date=None, new_status=None):
     finally:
         conn.close()
 
-def record_payment(vente_id, montant, date_paiement=None):
+def record_payment(vente_id, montant, date_paiement=None, collector_id=None):
     """Enregistre un paiement pour une vente/dette"""
     try:
         if not date_paiement:
             from datetime import datetime
             date_paiement = datetime.now().strftime('%Y-%m-%d')
         
+        if not collector_id:
+            # Si pas spécifié, utiliser le vendeur de la vente
+            conn_temp = connect_db()
+            with conn_temp.cursor() as cursor_temp:
+                cursor_temp.execute("SELECT id_ut FROM vente WHERE id_vente = %s", (vente_id,))
+                result = cursor_temp.fetchone()
+                collector_id = result['id_ut'] if result else None
+            conn_temp.close()
+        
+        if not collector_id:
+            raise ValueError("Impossible de déterminer le vendeur collecteur")
+        
         conn = connect_db()
         with conn.cursor() as cursor:
-            sql = """INSERT INTO paiement (date_pai, montant_pai, id_vente)
-                     VALUES (%s, %s, %s)"""
-            cursor.execute(sql, (date_paiement, montant, vente_id))
+            sql = """INSERT INTO paiement (date_pai, montant_pai, id_vente, id_vendeur_collecteur)
+                     VALUES (%s, %s, %s, %s)"""
+            cursor.execute(sql, (date_paiement, montant, vente_id, collector_id))
             conn.commit()
-            print(f"✓ Paiement inséré en BD pour vente {vente_id}")
+            print(f"✓ Paiement inséré en BD pour vente {vente_id} par vendeur {collector_id}")
             
             # Vérifier si la dette est complètement payée
             sql_check = """SELECT d.id_dette, d.montant_total_dette,
@@ -1130,6 +1150,36 @@ def get_payments_for_debt(debt_id):
                      WHERE p.id_vente = (SELECT id_vente FROM dette WHERE id_dette = %s)
                      ORDER BY p.date_pai DESC"""
             cursor.execute(sql, (debt_id,))
+            return cursor.fetchall()
+    except Exception as e:
+        print(f"Erreur: {e}")
+        return []
+    finally:
+        conn.close()
+
+def get_payments_by_date_and_vendor(date, vendor_id=None):
+    """Récupère tous les paiements effectués à une date donnée, optionnellement filtrés par vendeur collecteur"""
+    try:
+        conn = connect_db()
+        with conn.cursor() as cursor:
+            if vendor_id:
+                sql = """SELECT p.id_pai, p.date_pai, p.montant_pai, p.id_vente,
+                                p.id_vendeur_collecteur, mp.libelle_mode as payment_mode
+                         FROM paiement p
+                         JOIN vente v ON p.id_vente = v.id_vente
+                         JOIN mode_paiement mp ON v.id_mode = mp.id_mode
+                         WHERE DATE(p.date_pai) = %s AND p.id_vendeur_collecteur = %s
+                         ORDER BY p.date_pai DESC"""
+                cursor.execute(sql, (date, vendor_id))
+            else:
+                sql = """SELECT p.id_pai, p.date_pai, p.montant_pai, p.id_vente,
+                                p.id_vendeur_collecteur, mp.libelle_mode as payment_mode
+                         FROM paiement p
+                         JOIN vente v ON p.id_vente = v.id_vente
+                         JOIN mode_paiement mp ON v.id_mode = mp.id_mode
+                         WHERE DATE(p.date_pai) = %s
+                         ORDER BY p.date_pai DESC"""
+                cursor.execute(sql, (date,))
             return cursor.fetchall()
     except Exception as e:
         print(f"Erreur: {e}")

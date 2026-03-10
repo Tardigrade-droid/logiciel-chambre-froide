@@ -8,7 +8,7 @@ from datetime import datetime
 from database import (get_all_products, get_all_payment_modes, create_sale, get_sales_by_vendor_id, get_sale_by_id, 
                       is_manager, create_debt, is_credit_payment,
                       get_clients_by_phone, create_client_direct, update_sale, get_all_users, get_all_sales_detailed,
-                      get_remaining_amount_for_debt, get_total_paid_for_debt)
+                      get_remaining_amount_for_debt, get_total_paid_for_debt, get_payments_by_date_and_vendor)
 from invoice_generator import generate_invoice, open_invoice, print_thermal_receipt, generate_and_print_receipt
 from utils import format_currency, ask_print_options
 
@@ -384,7 +384,7 @@ class SalesView(QWidget):
         # Onglet 2 : Ventes du jour
         self.tab_daily_sales = QWidget()
         self.setup_daily_sales_tab()
-        self.tabs.addTab(self.tab_daily_sales, "📊 Ventes du Jour")
+        self.tabs.addTab(self.tab_daily_sales, "� Paiements du Jour")
         
         # Onglet 3 : Historique ventes (si manager)
         if is_manager(self.user['id_ut']):
@@ -523,20 +523,69 @@ class SalesView(QWidget):
         self.tab_new_sale.setLayout(layout)
 
     def setup_daily_sales_tab(self):
-        """Onglet des ventes du jour"""
+        """Onglet des paiements du jour"""
         layout = QVBoxLayout()
         
+        # Filtres (pour manager et date)
+        filters_layout = QHBoxLayout()
+        # Date de paiement
+        filters_layout.addWidget(QLabel("Date :"))
+        self.filter_date = QDateEdit()
+        self.filter_date.setDate(QDate.currentDate())
+        self.filter_date.setCalendarPopup(True)
+        self.filter_date.dateChanged.connect(self.refresh_daily_sales)
+        filters_layout.addWidget(self.filter_date)
+
+        if self.user['id_role'] == 1:  # Manager
+            filters_layout.addWidget(QLabel("Vendeur collecteur :"))
+            self.daily_vendor_filter = QComboBox()
+            self.daily_vendor_filter.addItem("TOUS", None)
+            self.refresh_daily_vendor_combo()
+            self.daily_vendor_filter.currentIndexChanged.connect(self.refresh_daily_sales)
+            filters_layout.addWidget(self.daily_vendor_filter)
+
+        layout.addLayout(filters_layout)
+        
+        # Conteneur horizontal pour les KPIs
+        kpi_layout = QHBoxLayout()
+        
+        # KPI : Paiements cash du jour
+        self.kpi_daily_cash = QLabel("Paiements cash : 0,00 €")
+        self.kpi_daily_cash.setStyleSheet(
+            "font-size: 14px; font-weight: bold; color: #27ae60; padding: 6px; "
+            "background-color: #ecf0f1; border-radius: 5px;"
+        )
+        kpi_layout.addWidget(self.kpi_daily_cash)
+        
+        # KPI : Avances sur dettes du jour
+        self.kpi_daily_debt_advances = QLabel("Avances dettes : 0,00 €")
+        self.kpi_daily_debt_advances.setStyleSheet(
+            "font-size: 14px; font-weight: bold; color: #2980b9; padding: 6px; "
+            "background-color: #d6eaf8; border-radius: 5px;"
+        )
+        kpi_layout.addWidget(self.kpi_daily_debt_advances)
+        
+        # KPI : Total encaissé du jour
+        self.kpi_daily_total_encaisse = QLabel("Total encaissé : 0,00 €")
+        self.kpi_daily_total_encaisse.setStyleSheet(
+            "font-size: 16px; font-weight: bold; color: #8e44ad; padding: 8px; "
+            "background-color: #ebdef0; border-radius: 5px;"
+        )
+        kpi_layout.addWidget(self.kpi_daily_total_encaisse)
+        
+        # Ajouter le conteneur des KPIs au layout principal
+        layout.addLayout(kpi_layout)
+        
         self.table_daily_sales = QTableWidget()
-        self.table_daily_sales.setColumnCount(6)
+        self.table_daily_sales.setColumnCount(5)
         self.table_daily_sales.setHorizontalHeaderLabels([
-            "ID Vente", "Client", "Mode Paiement", "Montant", "Retrait", "Détails"
+            "ID Vente", "Client", "Type Paiement", "Montant", "Détails"
         ])
         self.table_daily_sales.setColumnWidth(0, 80)
         self.table_daily_sales.setColumnWidth(1, 250)
         self.table_daily_sales.setColumnWidth(2, 150)
         self.table_daily_sales.setColumnWidth(3, 120)
-        self.table_daily_sales.setColumnWidth(4, 120)
-        self.table_daily_sales.setColumnWidth(5, 150)
+        self.table_daily_sales.setColumnWidth(4, 150)
         
         layout.addWidget(self.table_daily_sales)
         
@@ -618,6 +667,13 @@ class SalesView(QWidget):
         for user in users:
             nom_complet = f"{user['prenom_ut']} {user['nom_ut']}"
             self.filter_vendor.addItem(nom_complet, user['id_ut'])
+    
+    def refresh_daily_vendor_combo(self):
+        """Remplit le combo vendeur collecteur avec tous les utilisateurs"""
+        users = get_all_users()
+        for user in users:
+            nom_complet = f"{user['prenom_ut']} {user['nom_ut']}"
+            self.daily_vendor_filter.addItem(nom_complet, user['id_ut'])
     
     def refresh_all_sales(self):
         """Actualise le tableau de toutes les ventes avec filtres"""
@@ -1068,23 +1124,65 @@ class SalesView(QWidget):
         self.refresh_daily_sales()
 
     def refresh_daily_sales(self):
-        """Actualise les ventes du jour"""
-        today = QDate.currentDate().toString("yyyy-MM-dd")
-        sales = get_sales_by_vendor_id(self.user['id_ut'], today, today)
-        
-        self.table_daily_sales.setRowCount(len(sales))
-        
-        for row, sale in enumerate(sales):
-            self.table_daily_sales.setItem(row, 0, QTableWidgetItem(str(sale['id_vente'])))
-            self.table_daily_sales.setItem(row, 1, QTableWidgetItem(sale['client'] or "N/A"))
-            self.table_daily_sales.setItem(row, 2, QTableWidgetItem(sale['mode_paiement'] or "N/A"))
-            
-            montant = sale['montant_total'] or 0
-            self.table_daily_sales.setItem(row, 3, QTableWidgetItem(format_currency(montant)))
-            
+        """Actualise les paiements du jour"""
+        # Utiliser la date choisie (ou aujourd'hui par défaut)
+        if hasattr(self, 'filter_date'):
+            query_date = self.filter_date.date().toString("yyyy-MM-dd")
+        else:
+            query_date = QDate.currentDate().toString("yyyy-MM-dd")
+
+        # Déterminer le vendeur à filtrer
+        vendor_id = None
+        if self.user['id_role'] == 1:  # Manager
+            if hasattr(self, 'daily_vendor_filter'):
+                vendor_id = self.daily_vendor_filter.currentData()
+        else:  # Vendeur
+            vendor_id = self.user['id_ut']
+
+        # Récupérer tous les paiements effectués à la date donnée
+        payments = get_payments_by_date_and_vendor(query_date, vendor_id)
+
+        self.table_daily_sales.setRowCount(len(payments))
+
+        # Calculer les montants encaissés réels
+        cash_payments = 0
+        debt_advances = 0
+
+        for row, payment in enumerate(payments):
+            payment_id = payment['id_pai']
+            payment_date = payment['date_pai']
+            amount = payment['montant_pai']
+            sale_id = payment['id_vente']
+            vendor_id = payment['id_vendeur_collecteur']
+            payment_mode = payment['payment_mode']
+
+            # Déterminer le type de paiement
+            if "dette" in payment_mode.lower() or "crédit" in payment_mode.lower():
+                debt_advances += float(amount)
+                payment_type = "Avance dette"
+            else:
+                cash_payments += float(amount)
+                payment_type = "Cash"
+
+            # Récupérer les infos de la vente pour afficher le client
+            sale_info = get_sale_by_id(sale_id)
+            client_name = sale_info.get('client', 'N/A') if sale_info else 'N/A'
+
+            self.table_daily_sales.setItem(row, 0, QTableWidgetItem(str(sale_id)))
+            self.table_daily_sales.setItem(row, 1, QTableWidgetItem(client_name))
+            self.table_daily_sales.setItem(row, 2, QTableWidgetItem(payment_type))
+            self.table_daily_sales.setItem(row, 3, QTableWidgetItem(format_currency(amount)))
+
             btn_details = QPushButton("Voir")
-            btn_details.clicked.connect(lambda checked, sid=sale['id_vente']: self.show_sale_details(sid))
-            self.table_daily_sales.setCellWidget(row, 5, btn_details)
+            btn_details.clicked.connect(lambda checked, sid=sale_id: self.show_sale_details(sid))
+            self.table_daily_sales.setCellWidget(row, 4, btn_details)
+
+        total_encaisse = cash_payments + debt_advances
+
+        # Mettre à jour les KPI affichés
+        self.kpi_daily_cash.setText(f"Paiements cash : {format_currency(cash_payments)}")
+        self.kpi_daily_debt_advances.setText(f"Avances dettes : {format_currency(debt_advances)}")
+        self.kpi_daily_total_encaisse.setText(f"Total encaissé : {format_currency(total_encaisse)}")
 
     def show_sale_details(self, sale_id):
         """Affiche les détails d'une vente dans une boîte de dialogue améliorée"""

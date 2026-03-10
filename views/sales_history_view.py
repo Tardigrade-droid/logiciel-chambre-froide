@@ -70,63 +70,7 @@ class SalesHistoryView(QWidget):
         filters_layout.addStretch()
         main_layout.addLayout(filters_layout)
 
-        # KPIs
-        self.kpis_widget = QWidget()
-        kpis_layout = QHBoxLayout(self.kpis_widget)
-
-        # KPI 1: Montant total sans dette
-        kpi1_group = QGroupBox("Montant Total Sans Dette")
-        kpi1_layout = QVBoxLayout()
-        self.label_total_no_debt = QLabel("0,00 FC")
-        self.label_total_no_debt.setStyleSheet("""
-            QLabel {
-                font-size: 24px;
-                font-weight: bold;
-                color: #27ae60;
-                text-align: center;
-            }
-        """)
-        self.label_total_no_debt.setAlignment(Qt.AlignCenter)
-        kpi1_layout.addWidget(self.label_total_no_debt)
-        kpi1_group.setLayout(kpi1_layout)
-        kpis_layout.addWidget(kpi1_group)
-
-        # KPI 2: Montant total avec dette
-        kpi2_group = QGroupBox("Montant Total Avec Dette")
-        kpi2_layout = QVBoxLayout()
-        self.label_total_with_debt = QLabel("0,00 FC")
-        self.label_total_with_debt.setStyleSheet("""
-            QLabel {
-                font-size: 24px;
-                font-weight: bold;
-                color: #e74c3c;
-                text-align: center;
-            }
-        """)
-        self.label_total_with_debt.setAlignment(Qt.AlignCenter)
-        kpi2_layout.addWidget(self.label_total_with_debt)
-        kpi2_group.setLayout(kpi2_layout)
-        kpis_layout.addWidget(kpi2_group)
-
-        # KPI 3: Montant total avec sans dettes et avances
-        kpi3_group = QGroupBox("Total Réel (Sans Dette + Avances)")
-        kpi3_layout = QVBoxLayout()
-        self.label_total_real = QLabel("0,00 FC")
-        self.label_total_real.setStyleSheet("""
-            QLabel {
-                font-size: 24px;
-                font-weight: bold;
-                color: #3498db;
-                text-align: center;
-            }
-        """)
-        self.label_total_real.setAlignment(Qt.AlignCenter)
-        kpi3_layout.addWidget(self.label_total_real)
-        kpi3_group.setLayout(kpi3_layout)
-        kpis_layout.addWidget(kpi3_group)
-
-        main_layout.addWidget(self.kpis_widget)
-
+        # (KPIs supprimés - section enlevée)
         # Séparateur
         separator = QFrame()
         separator.setFrameShape(QFrame.HLine)
@@ -200,42 +144,7 @@ class SalesHistoryView(QWidget):
             # Déjà filtré par vendeur et dates
             filtered_sales = all_sales
 
-        # Calculer les KPIs seulement si c'est un vendeur ou si le manager regarde un vendeur spécifique
-        show_kpis = not self.is_manager or (self.is_manager and self.vendor_filter.currentData())
-
-        if show_kpis:
-            # Calculer les KPIs
-            total_no_debt = 0  # Ventes payées immédiatement (sans dette)
-            total_with_debt = 0  # Montant total des ventes avec dette
-            total_real = 0  # Total réel = sans dette + avances sur dettes
-
-            for sale in filtered_sales:
-                sale_amount = float(sale.get('montant_total', 0) or 0)
-                debt_id = sale.get('id_dette')
-
-                if debt_id:
-                    # Vente avec dette
-                    total_with_debt += sale_amount
-                    remaining = get_remaining_amount_for_debt(debt_id)
-                    paid = get_total_paid_for_debt(debt_id)
-                    total_real += float(paid)  # Avances payées sur la dette
-                else:
-                    # Vente sans dette (payée immédiatement)
-                    total_no_debt += sale_amount
-                    total_real += sale_amount
-
-            # Mettre à jour les KPIs
-            self.label_total_no_debt.setText(format_currency(total_no_debt))
-            self.label_total_with_debt.setText(format_currency(total_with_debt))
-            self.label_total_real.setText(format_currency(total_real))
-
-            # Afficher les KPIs
-            self.kpis_widget.show()
-        else:
-            # Masquer les KPIs pour les managers qui voient tous les vendeurs
-            self.kpis_widget.hide()
-
-        # Remplir le tableau
+        # Les KPI ayant été supprimés, procéder directement au remplissage du tableau
         self.table_sales.setRowCount(len(filtered_sales))
 
         for row, sale in enumerate(filtered_sales):
