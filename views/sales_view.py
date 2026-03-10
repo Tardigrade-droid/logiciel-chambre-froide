@@ -3,10 +3,12 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QF
                              QTableWidget, QTableWidgetItem, QSpinBox, QDateEdit, QDialog,
                              QRadioButton, QButtonGroup, QGroupBox, QTextEdit)
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QColor, QBrush, QFont
 from datetime import datetime
 from database import (get_all_products, get_all_payment_modes, create_sale, get_sales_by_vendor_id, get_sale_by_id, 
                       is_manager, create_debt, is_credit_payment,
-                      get_clients_by_phone, create_client_direct, update_sale, get_all_users, get_all_sales_detailed)
+                      get_clients_by_phone, create_client_direct, update_sale, get_all_users, get_all_sales_detailed,
+                      get_remaining_amount_for_debt, get_total_paid_for_debt)
 from invoice_generator import generate_invoice, open_invoice, print_thermal_receipt, generate_and_print_receipt
 from utils import format_currency, ask_print_options
 
@@ -589,18 +591,22 @@ class SalesView(QWidget):
         
         # Tableau des ventes
         self.table_all_sales = QTableWidget()
-        self.table_all_sales.setColumnCount(8)
+        self.table_all_sales.setColumnCount(11)
         self.table_all_sales.setHorizontalHeaderLabels([
-            "ID Vente", "Date", "Vendeur", "Client", "Mode Paiement", "Montant", "Détails", "Modifier"
+            "ID Vente", "Date", "Vendeur", "Client", "Mode Paiement", "Montant Total",
+            "Montant Payé", "Reste à Payer", "Statut", "Détails", "Modifier"
         ])
         self.table_all_sales.setColumnWidth(0, 80)
-        self.table_all_sales.setColumnWidth(1, 120)
-        self.table_all_sales.setColumnWidth(2, 150)
-        self.table_all_sales.setColumnWidth(3, 200)
+        self.table_all_sales.setColumnWidth(1, 100)
+        self.table_all_sales.setColumnWidth(2, 140)
+        self.table_all_sales.setColumnWidth(3, 180)
         self.table_all_sales.setColumnWidth(4, 120)
         self.table_all_sales.setColumnWidth(5, 120)
         self.table_all_sales.setColumnWidth(6, 120)
         self.table_all_sales.setColumnWidth(7, 120)
+        self.table_all_sales.setColumnWidth(8, 100)
+        self.table_all_sales.setColumnWidth(9, 100)
+        self.table_all_sales.setColumnWidth(10, 100)
         
         layout.addWidget(self.table_all_sales)
         
@@ -625,7 +631,7 @@ class SalesView(QWidget):
         filtered_sales = []
         for sale in all_sales:
             # Filtre vendeur
-            if vendor_id is not None and sale.get('id_ut') != vendor_id:
+            if vendor_id is not None and sale.get('id_vendeur') != vendor_id:
                 continue
             
             # Filtre date
@@ -645,21 +651,55 @@ class SalesView(QWidget):
             self.table_all_sales.setItem(row, 3, QTableWidgetItem(sale.get('client', 'N/A')))
             self.table_all_sales.setItem(row, 4, QTableWidgetItem(sale.get('mode_paiement', 'N/A')))
             
-            montant = sale['montant_total'] or 0
-            self.table_all_sales.setItem(row, 5, QTableWidgetItem(format_currency(montant)))
+            montant_total = sale['montant_total'] or 0
+            self.table_all_sales.setItem(row, 5, QTableWidgetItem(format_currency(montant_total)))
             
-            # Bouttons d'action
+            # Informations de paiement selon la présence de dette
+            debt_id = sale.get('id_dette')
+            if debt_id:
+                # Vente avec dette
+                montant_paye = float(get_total_paid_for_debt(debt_id))
+                reste_a_payer = float(get_remaining_amount_for_debt(debt_id))
+                statut = "EN COURS" if reste_a_payer > 0 else "PAYÉ"
+                color = QColor("#e74c3c") if reste_a_payer > 0 else QColor("#27ae60")
+                
+                # Montant payé
+                self.table_all_sales.setItem(row, 6, QTableWidgetItem(format_currency(montant_paye)))
+                # Reste à payer
+                item_reste = QTableWidgetItem(format_currency(reste_a_payer))
+                font = QFont()
+                font.setBold(True)
+                item_reste.setFont(font)
+                item_reste.setForeground(QBrush(color))
+                self.table_all_sales.setItem(row, 7, item_reste)
+                # Statut
+                item_statut = QTableWidgetItem(statut)
+                item_statut.setFont(font)
+                item_statut.setForeground(QBrush(color))
+                self.table_all_sales.setItem(row, 8, item_statut)
+            else:
+                # Vente sans dette (payée)
+                self.table_all_sales.setItem(row, 6, QTableWidgetItem(format_currency(montant_total)))
+                self.table_all_sales.setItem(row, 7, QTableWidgetItem(format_currency(0)))
+                item_statut = QTableWidgetItem("PAYÉ")
+                font = QFont()
+                font.setBold(True)
+                item_statut.setFont(font)
+                item_statut.setForeground(QBrush(QColor("#27ae60")))
+                self.table_all_sales.setItem(row, 8, item_statut)
+            
+            # Boutons d'action
             # Bouton voir les détails
             btn_details = QPushButton("👁️ Voir")
             btn_details.setStyleSheet("background-color: #9b59b6; color: white;")
             btn_details.clicked.connect(lambda checked, sid=sale['id_vente']: self.show_sale_details(sid))
-            self.table_all_sales.setCellWidget(row, 6, btn_details)
+            self.table_all_sales.setCellWidget(row, 9, btn_details)
             
             # Bouton modifier
             btn_modify = QPushButton("✏️ Modifier")
             btn_modify.setStyleSheet("background-color: #3498db; color: white;")
             btn_modify.clicked.connect(lambda checked, sid=sale['id_vente']: self.load_sale_to_edit_from_all_sales(sid))
-            self.table_all_sales.setCellWidget(row, 7, btn_modify)
+            self.table_all_sales.setCellWidget(row, 10, btn_modify)
 
     def load_sale_to_edit_from_all_sales(self, sale_id):
         """Charge une vente depuis l'onglet toutes les ventes et navigue vers l'onglet modification"""

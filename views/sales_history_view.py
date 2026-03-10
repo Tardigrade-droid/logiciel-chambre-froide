@@ -2,9 +2,10 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                              QTableWidgetItem, QLabel, QDateEdit, QPushButton,
                              QGroupBox, QFrame, QComboBox)
 from PySide6.QtCore import Qt, QDate
+from PySide6.QtGui import QColor, QBrush, QFont
 from database import (get_sales_by_vendor_id, get_all_sales_detailed,
                       get_remaining_amount_for_debt, get_total_paid_for_debt,
-                      get_all_users, is_manager)
+                      get_all_users, is_manager, get_sale_by_id)
 from utils import format_currency
 from datetime import datetime
 
@@ -268,43 +269,52 @@ class SalesHistoryView(QWidget):
                 remaining_amount = float(get_remaining_amount_for_debt(debt_id))
 
                 self.table_sales.setItem(row, 4 + col_offset, QTableWidgetItem(format_currency(paid_amount)))
-                self.table_sales.setItem(row, 5 + col_offset, QTableWidgetItem(format_currency(remaining_amount)))
-                self.table_sales.setItem(row, 6 + col_offset, QTableWidgetItem("EN COURS"))
+                
+                item_reste = QTableWidgetItem(format_currency(remaining_amount))
+                font = QFont()
+                font.setBold(True)
+                item_reste.setFont(font)
+                color = QColor("#e74c3c") if remaining_amount > 0 else QColor("#27ae60")
+                item_reste.setForeground(QBrush(color))
+                self.table_sales.setItem(row, 5 + col_offset, item_reste)
+                
+                statut = "EN COURS" if remaining_amount > 0 else "PAYÉ"
+                item_statut = QTableWidgetItem(statut)
+                item_statut.setFont(font)
+                item_statut.setForeground(QBrush(color))
+                self.table_sales.setItem(row, 6 + col_offset, item_statut)
             else:
                 # Vente sans dette
                 self.table_sales.setItem(row, 4 + col_offset, QTableWidgetItem(format_currency(total_amount)))
                 self.table_sales.setItem(row, 5 + col_offset, QTableWidgetItem(format_currency(0)))
-                self.table_sales.setItem(row, 6 + col_offset, QTableWidgetItem("PAYÉ"))
+                
+                item_statut = QTableWidgetItem("PAYÉ")
+                font = QFont()
+                font.setBold(True)
+                item_statut.setFont(font)
+                item_statut.setForeground(QBrush(QColor("#27ae60")))
+                self.table_sales.setItem(row, 6 + col_offset, item_statut)
 
             # Actions (colonne 7 + col_offset)
             action_widget = QWidget()
             action_layout = QHBoxLayout()
 
-            btn_invoice = QPushButton("📄 Facture")
-            btn_invoice.clicked.connect(lambda checked, sid=sale.get('id_vente'): self.show_invoice(sid))
-            action_layout.addWidget(btn_invoice)
+            btn_details = QPushButton("👁️ Voir")
+            btn_details.setStyleSheet("background-color: #9b59b6; color: white;")
+            btn_details.clicked.connect(lambda checked, sid=sale.get('id_vente'): self.show_sale_details(sid))
+            action_layout.addWidget(btn_details)
 
             action_layout.setContentsMargins(0, 0, 0, 0)
             action_widget.setLayout(action_layout)
             self.table_sales.setCellWidget(row, 7 + col_offset, action_widget)
 
-    def show_invoice(self, sale_id):
-        """Affiche la facture d'une vente"""
+    def show_sale_details(self, sale_id):
+        """Affiche les détails d'une vente dans une boîte de dialogue"""
         try:
-            from invoice_generator import open_invoice
-            # Générer le nom de fichier de la facture
-            invoice_filename = f"factures/vente_{sale_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-
-            # Essayer d'ouvrir la facture existante ou en générer une nouvelle
-            import os
-            if os.path.exists(f"factures/vente_{sale_id}.pdf"):
-                open_invoice(f"factures/vente_{sale_id}.pdf")
-            else:
-                # Pour une vraie implémentation, il faudrait récupérer les données de vente
-                # et générer la facture. Pour l'instant, on affiche juste un message
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.information(self, "Facture",
-                                      f"Facture pour la vente #{sale_id}\nFonctionnalité à implémenter")
+            # Importer SaleDetailsDialog depuis sales_view
+            from .sales_view import SaleDetailsDialog
+            dialog = SaleDetailsDialog(sale_id, self)
+            dialog.exec()
         except Exception as e:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Erreur", f"Impossible d'ouvrir la facture: {str(e)}")
+            QMessageBox.warning(self, "Erreur", f"Impossible d'afficher les détails: {str(e)}")
