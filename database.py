@@ -800,7 +800,8 @@ def get_sale_by_id(sale_id):
             sql_vente = """SELECT v.*, 
                                   CONCAT(u.prenom_ut, ' ', u.nom_ut) as vendeur,
                                   CONCAT(c.nom_client, ' ', c.prenom_client) as client,
-                                  mp.libelle_mode as mode_paiement
+                                  mp.libelle_mode as mode_paiement,
+                                  c.tel_client
                            FROM vente v
                            LEFT JOIN utilisateur u ON v.id_ut = u.id_ut
                            LEFT JOIN client c ON v.id_client = c.id_client
